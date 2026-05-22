@@ -30,3 +30,5 @@ htmlcov/
 pa_calibration*.gcode
 reports/
 *.log
+# Explorativer Wegwerf-Code (Vision-Spike Etappe 2)
+spike/
