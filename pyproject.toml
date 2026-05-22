@@ -9,6 +9,9 @@ dependencies = [
     "pillow-heif>=0.18",
 ]
 
+[project.scripts]
+pa-analyzer = "pa_analyzer.cli:main"
+
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
