@@ -10,7 +10,7 @@ import re
 from collections.abc import Iterator
 from dataclasses import dataclass
 
-from .model import AnalysisResult, Chevron, FrameBox, PaGroup, PatternModel, Point
+from .model import Chevron, FrameBox, PaGroup, PatternModel, Point
 
 # Zahl-Token: deckt "142", "124.538", ".88741", "-.8" ab.
 _NUM = r"-?\d*\.?\d+"
