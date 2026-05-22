@@ -40,6 +40,7 @@ class GeneratorParams:
     # Klipper-Hooks
     start_gcode: str = "PRINT_START"
     end_gcode: str = "PRINT_END"
+    analyze_gcode: str = "RUN_SHELL_COMMAND CMD=pa_analyze"
 
 
 def _line_width(p: GeneratorParams) -> float:
@@ -187,4 +188,8 @@ def generate(params: GeneratorParams) -> str:
                 )
 
     out.append(p.end_gcode)
+    # Letzte Zeile der gedruckten Datei: stößt nach Druckende die
+    # Auswertung an (Spec §4 Phase 3). Leeres analyze_gcode -> kein Trailer.
+    if p.analyze_gcode:
+        out.append(p.analyze_gcode)
     return "\n".join(out) + "\n"
