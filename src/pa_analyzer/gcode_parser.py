@@ -28,7 +28,7 @@ class _Move:
 
     x: float
     y: float
-    extruding: bool  # True, wenn die Bewegung Material extrudiert (E > 0)
+    extruding: bool  # True, wenn die Bewegung Material extrudiert
 
 
 def _tokenize(gcode_text: str) -> Iterator[tuple[str, object]]:
