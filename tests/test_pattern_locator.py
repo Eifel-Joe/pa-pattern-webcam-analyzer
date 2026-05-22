@@ -46,3 +46,11 @@ def test_locate_quad_umschliesst_patternregion_heic():
     flaeche = lang * kurz
     bild = img.shape[0] * img.shape[1]
     assert 0.2 < flaeche / bild < 0.85
+
+
+def test_locate_quad_wirft_bei_leerer_maske():
+    # Eine komplett leere Maske (kein Filament erkannt) darf nicht mit
+    # einer kryptischen Exception abstürzen, sondern klar melden.
+    leer = np.zeros((200, 200), np.uint8)
+    with pytest.raises(ValueError):
+        locate_quad(leer)

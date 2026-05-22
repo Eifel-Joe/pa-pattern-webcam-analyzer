@@ -13,13 +13,25 @@ import numpy as np
 def _dominant_hue(hue: np.ndarray, mask: np.ndarray) -> int:
     """Häufigster Hue unter den maskierten Pixeln, zirkulär geglättet."""
     hist = np.bincount(hue[mask].ravel(), minlength=180).astype(float)
+    # Dreifach gekachelt, damit das Glätten über die Hue-Grenze 0/180
+    # wrappt (rotes Filament liegt genau dort). Fenster 11 (~22°) ist
+    # breiter als die Hue-Toleranz von filament_mask — kein gespaltener Peak.
     tiled = np.r_[hist, hist, hist]
     smooth = np.convolve(tiled, np.ones(11) / 11, mode="same")[180:360]
     return int(np.argmax(smooth))
 
 
 def filament_mask(img: np.ndarray) -> np.ndarray:
-    """Binäre Maske (0/255) der gedruckten Filament-Pixel."""
+    """Binäre Maske (0/255) der gedruckten Filament-Pixel.
+
+    Drei Stufen (Konstanten im Vision-Spike validiert):
+    1. Sättigungs-Schwelle ``max(60, Otsu(S))`` — die Untergrenze 60
+       verhindert, dass flau gefärbtes Bett als "gesättigt" gilt.
+    2. Grob-Maske ``S > sat_thr und 40 < V < 250`` — schließt zu dunkle
+       und ausgebrannte (Glanzlicht-) Pixel aus.
+    3. Dominanter Filament-Hue, dann zirkuläre Hue-Distanz < 18 — so wird
+       farbunabhängig auf die tatsächliche Filamentfarbe gefiltert.
+    """
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
     hue, sat, val = hsv[:, :, 0], hsv[:, :, 1], hsv[:, :, 2]
     sat_thr = max(60, int(cv2.threshold(sat, 0, 255, cv2.THRESH_OTSU)[0]))
@@ -45,12 +57,18 @@ def locate_quad(mask: np.ndarray) -> np.ndarray:
     if n > 1:
         biggest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
         opened = (lbl == biggest).astype(np.uint8) * 255
+    # Close-Kernel skaliert mit der Bildbreite (Spike: Breite/120);
+    # `| 1` erzwingt eine ungerade Größe (von morphologyEx verlangt).
     ks = max(7, mask.shape[1] // 120) | 1
     closed = cv2.morphologyEx(
         opened, cv2.MORPH_CLOSE,
         cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (ks, ks)))
     cnts, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL,
                                cv2.CHAIN_APPROX_SIMPLE)
+    if not cnts:
+        raise ValueError(
+            "locate_quad: keine Filament-Region gefunden — Bild zu "
+            "dunkel oder Filamentfarbe nicht erkennbar?")
     big = max(cnts, key=cv2.contourArea)
     pts = cv2.boxPoints(cv2.minAreaRect(big)).astype(np.float64)
     center = pts.mean(axis=0)
