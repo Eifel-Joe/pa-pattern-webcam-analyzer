@@ -42,6 +42,9 @@ def _tokenize(gcode_text: str) -> Iterator[tuple[str, object]]:
     cur_y = 0.0
     for raw in gcode_text.splitlines():
         line = raw.strip()
+        # GCode-Kommentar entfernen, damit Achsen-Regexes keine Werte
+        # aus Kommentartext aufgreifen (z.B. "; X123" wäre sonst ein Treffer).
+        line = line.split(";", 1)[0]
         pa = _PA_RE.match(line)
         if pa:
             yield ("pa", float(pa.group(1)))

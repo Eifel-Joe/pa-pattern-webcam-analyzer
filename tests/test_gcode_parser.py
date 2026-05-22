@@ -39,3 +39,8 @@ def test_tokenize_fuehrende_null_optional():
     # OrcaSlicer schreibt E-Werte oft ohne fuehrende Null
     tokens = list(_tokenize("G1 X.5 Y-.25 E.88741\n"))
     assert tokens == [("move", _Move(0.5, -0.25, extruding=True))]
+
+
+def test_tokenize_ignoriert_achsenwerte_in_kommentaren():
+    # Ein Kommentar mit achsen-aehnlichem Text darf keinen move-Token erzeugen
+    assert list(_tokenize("G1 F6000 ; X123 im Kommentar\n")) == []
