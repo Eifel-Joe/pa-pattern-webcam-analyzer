@@ -153,21 +153,33 @@ G1 X2 Y2 E0.5 F1000
 G1 X-2 Y2 E0.5 F1000
 """
 
+# Bei M82 trägt der Travel-Move zum Chevron-Start die UNVERÄNDERTE
+# absolute E-Position (5, gesetzt per G92 E5). Ein naiver "E>0 =
+# extrudierend"-Parser würde diesen Travel fälschlich als Extrusion
+# zählen — der Run hätte 3 statt 2 Segmente und ergäbe kein Chevron.
+# Nur die Delta-Logik (E unverändert -> kein Delta -> kein Extrudieren)
+# liefert dasselbe Pattern wie _BASIS. Dieser GCode REDt also gegen den
+# alten Parser.
 _ABSOLUT_E = """\
 G90
 M82
+G92 E5
 SET_PRESSURE_ADVANCE ADVANCE=0.02
-G1 X10 Y10 F1000
-G1 X12 Y12 E0.5 F1000
-G1 X10 Y14 E1.0 F1000
+G1 X10 Y10 E5 F1000
+G1 X12 Y12 E5.5 F1000
+G1 X10 Y14 E6 F1000
 """
 
+# Wie _ABSOLUT_E, aber mit einem zusätzlichen `G92 E0` zwischen den
+# Chevron-Armen. Ohne G92-Behandlung wäre das Delta des letzten Moves
+# 0.5 - 5.5 < 0 (kein Extrudieren) -> kein Chevron.
 _ABSOLUT_E_G92 = """\
 G90
 M82
+G92 E5
 SET_PRESSURE_ADVANCE ADVANCE=0.02
-G1 X10 Y10 F1000
-G1 X12 Y12 E0.5 F1000
+G1 X10 Y10 E5 F1000
+G1 X12 Y12 E5.5 F1000
 G92 E0
 G1 X10 Y14 E0.5 F1000
 """
@@ -181,11 +193,12 @@ def test_parse_g91_relativ_wie_g90_absolut():
 
 def test_parse_m82_absolut_e_wie_m83_relativ():
     # Bei M82 wird die Extrusion über das Delta zur vorigen E-Position
-    # bestimmt — gleiches Pattern wie die relative M83-Variante.
+    # bestimmt — der Travel mit unveränderter absoluter E-Position zählt
+    # NICHT als Extrusion. Gleiches Pattern wie die M83-Variante.
     assert parse(_ABSOLUT_E).groups == parse(_BASIS).groups
 
 
 def test_parse_m82_mit_g92_reset():
     # G92 E0 setzt den Extruder-Origin zurück; der folgende Move mit
-    # E0.5 ist danach wieder eine Extrusion (Delta +0.5).
+    # E0.5 ist danach wieder eine Extrusion (Delta +0.5 statt -5).
     assert parse(_ABSOLUT_E_G92).groups == parse(_BASIS).groups
