@@ -10,7 +10,7 @@ import re
 from collections.abc import Iterator
 from dataclasses import dataclass
 
-from .model import Chevron, FrameBox, PaGroup, PatternModel, Point
+from .model import AnalysisResult, Chevron, FrameBox, PaGroup, PatternModel, Point
 
 # Zahl-Token: deckt "142", "124.538", ".88741", "-.8" ab.
 _NUM = r"-?\d*\.?\d+"
@@ -202,8 +202,29 @@ def _find_frame_box(gcode_text: str) -> FrameBox | None:
     return None
 
 
+def _content_bounds(gcode_text: str) -> tuple[Point, Point] | None:
+    """Bounding-Box aller extrudierenden Move-Endpunkte (Rahmen-Box,
+    Balken und Chevrons des Patterns)."""
+    xs: list[float] = []
+    ys: list[float] = []
+    for kind, val in _tokenize(gcode_text):
+        if kind == "move":
+            move: _Move = val  # type: ignore[assignment]
+            if move.extruding:
+                xs.append(move.x)
+                ys.append(move.y)
+    if not xs:
+        return None
+    return Point(min(xs), min(ys)), Point(max(xs), max(ys))
+
+
 def parse(gcode_text: str) -> PatternModel:
     """Parst PA-Pattern-GCode in ein PatternModel."""
     groups = _dedupe_by_pa(_parse_groups(gcode_text))
     frame_box = _find_frame_box(gcode_text)
-    return PatternModel(groups=tuple(groups), frame_box=frame_box)
+    content_bounds = _content_bounds(gcode_text)
+    return PatternModel(
+        groups=tuple(groups),
+        frame_box=frame_box,
+        content_bounds=content_bounds,
+    )

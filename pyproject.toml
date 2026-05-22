@@ -3,6 +3,11 @@ name = "pa-analyzer"
 version = "0.1.0"
 description = "Automatische Pressure-Advance-Kalibrierung eines Klipper-3D-Druckers per Webcam-Auswertung"
 requires-python = ">=3.13"
+dependencies = [
+    "opencv-python-headless>=4.10",
+    "numpy>=2.0",
+    "pillow-heif>=0.18",
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
