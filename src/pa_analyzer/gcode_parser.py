@@ -158,11 +158,16 @@ def _axis_parallel(seg: tuple[Point, Point]) -> bool:
 
 
 def _rectangle_from_run(run: list[tuple[Point, Point]]) -> FrameBox | None:
-    """Prüft, ob die letzten 4 Segmente eines Runs ein geschlossenes,
-    achsenparalleles Rechteck bilden."""
-    if len(run) < 4:
+    """Prüft, ob ein Run aus genau 4 Segmenten ein geschlossenes,
+    achsenparalleles Rechteck bildet.
+
+    Verlangt exakt 4 Segmente — so wird ein zufällig rechteckiges
+    4er-Fenster aus einer langen Extrusion (z.B. Skirt) nicht als
+    Rahmen-Box fehlerkannt.
+    """
+    if len(run) != 4:
         return None
-    segs = run[-4:]
+    segs = run
     if not all(_axis_parallel(s) for s in segs):
         return None
     if not _close(segs[-1][1], segs[0][0]):  # geschlossen?
