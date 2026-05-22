@@ -47,7 +47,7 @@ def pick_orientation(
     Oberkante; das Chevron-Band der Rest. Höchstes Verhältnis gewinnt.
     """
     w, h = warp_size(model)
-    lo, hi = model.content_bounds
+    _, hi = model.content_bounds  # nur hi.y für die Bandgrenze gebraucht
     # Oberkante der Rahmen-Box = Unterkante des Balkens.
     frame_top = max(p.y for p in model.frame_box.corners)
     band = int(round((hi.y - frame_top) * PX_PER_MM))
