@@ -1,5 +1,6 @@
 """Tests für die Kommandozeilen-Schnittstelle."""
 import json
+import socket
 from pathlib import Path
 
 from pa_analyzer.cli import main
@@ -50,3 +51,21 @@ def test_run_ueber_lokalen_http_server(tmp_path, http_server, capsys):
                "--gcode", str(FIXTURES / "pa_pattern.gcode")])
     assert rc == 0
     assert "PA-Analyse-Ergebnis" in capsys.readouterr().out
+
+
+def test_run_webcam_offline_gibt_fehlercode(tmp_path, capsys):
+    # Konfigurierte Webcam-URL zeigt auf einen sofort geschlossenen Port:
+    # die ConnectionError aus fetch_snapshot muss zentral als sauberer
+    # Fehler (Exit-Code 1, Meldung auf stderr) abgefangen werden.
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
+    cfg = tmp_path / "cfg.json"
+    cfg.write_text(json.dumps({
+        "webcam_url": f"http://127.0.0.1:{port}/snapshot.jpg",
+    }), encoding="utf-8")
+    rc = main(["--config", str(cfg), "run",
+               "--gcode", str(FIXTURES / "pa_pattern.gcode")])
+    assert rc == 1
+    assert "Fehler" in capsys.readouterr().err
