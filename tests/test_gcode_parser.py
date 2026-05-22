@@ -1,7 +1,7 @@
 """Tests für den GCode-Parser."""
 import pytest
 
-from pa_analyzer.gcode_parser import _Move, _tokenize
+from pa_analyzer.gcode_parser import _Move, _tokenize, parse
 
 
 def test_tokenize_erkennt_pa_befehl():
@@ -44,3 +44,47 @@ def test_tokenize_fuehrende_null_optional():
 def test_tokenize_ignoriert_achsenwerte_in_kommentaren():
     # Ein Kommentar mit achsen-aehnlichem Text darf keinen move-Token erzeugen
     assert list(_tokenize("G1 F6000 ; X123 im Kommentar\n")) == []
+
+
+def test_parst_genau_21_pa_gruppen(pa_pattern_gcode):
+    model = parse(pa_pattern_gcode)
+    assert len(model.groups) == 21
+
+
+def test_pa_werte_aufsteigend_und_korrekt(pa_pattern_gcode):
+    model = parse(pa_pattern_gcode)
+    werte = [g.pa_value for g in model.groups]
+    erwartet = [round(0.010 + i * 0.002, 3) for i in range(21)]
+    assert werte == pytest.approx(erwartet, abs=1e-9)
+
+
+def test_drei_chevrons_pro_gruppe(pa_pattern_gcode):
+    model = parse(pa_pattern_gcode)
+    assert all(len(g.chevrons) == 3 for g in model.groups)
+
+
+def test_erste_gruppe_ist_echtes_pattern_nicht_rahmenbox(pa_pattern_gcode):
+    # Die SET_PRESSURE_ADVANCE bei GCode-Zeile 108 gehoert zur Rahmen-Box
+    # und darf NICHT als Gruppe auftauchen. Die echte erste Gruppe (PA 0.01)
+    # hat ihren Apex bei X~124.5.
+    model = parse(pa_pattern_gcode)
+    g = model.groups[0]
+    assert g.pa_value == pytest.approx(0.01)
+    ch = g.chevrons[0]
+    assert ch.apex.x == pytest.approx(124.538, abs=0.01)
+    assert ch.apex.y == pytest.approx(142.0, abs=0.01)
+    assert ch.apex.x > ch.start.x  # Apex liegt rechts
+
+
+def test_apex_x_letzte_gruppe(pa_pattern_gcode):
+    model = parse(pa_pattern_gcode)
+    assert model.groups[-1].pa_value == pytest.approx(0.05)
+    assert model.groups[-1].chevrons[0].apex.x == pytest.approx(196.566, abs=0.01)
+
+
+def test_chevron_arme_kehren_in_x_zurueck(pa_pattern_gcode):
+    # start.x und end.x eines Chevrons liegen auf gleicher Spalte
+    model = parse(pa_pattern_gcode)
+    for g in model.groups:
+        for ch in g.chevrons:
+            assert ch.start.x == pytest.approx(ch.end.x, abs=0.5)
