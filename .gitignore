@@ -1,0 +1,32 @@
+# ── Secrets / lokale Konfiguration — NIEMALS committen ───────────────
+# Briefing-Ordner des Nutzers; enthaelt drucker-zugang.txt (Klartext-Passwort)
+reference/
+# Projekt-lokale Drucker-Zugangsdaten
+/MEMORY.md
+# Lokale Claude-Code-Einstellungen
+.claude/
+
+# ── Python ───────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# ── Test / Tooling ───────────────────────────────────────────────────
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ── Lokale Laufzeit-Artefakte ────────────────────────────────────────
+*.b64
+pa_calibration*.gcode
+reports/
+*.log
