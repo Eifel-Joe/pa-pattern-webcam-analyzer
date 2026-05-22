@@ -55,7 +55,19 @@ class FrameBox:
 
 @dataclass(frozen=True)
 class PatternModel:
-    """Geparstes PA-Pattern: alle PA-Gruppen und (optional) die Rahmen-Box."""
+    """Geparstes PA-Pattern: alle PA-Gruppen, die Rahmen-Box und die
+    Bounding-Box der gesamten Druck-Geometrie."""
 
     groups: tuple[PaGroup, ...]
     frame_box: FrameBox | None = None
+    content_bounds: tuple[Point, Point] | None = None
+
+
+@dataclass(frozen=True)
+class AnalysisResult:
+    """Ergebnis der Bild-Auswertung."""
+
+    best_pa: float                          # interpoliertes Optimum
+    nearest_step: float                     # nächster gedruckter PA-Wert
+    confidence: float                       # 0..1
+    scores: tuple[tuple[float, float], ...]  # (pa_value, score) je Gruppe

@@ -118,3 +118,16 @@ def test_parse_gcode_ohne_pattern_liefert_keine_gruppen():
     model = parse("G90\nG1 X10 Y10 E1\nG1 X20 Y20 E1\n")
     assert model.groups == ()
     assert model.frame_box is None
+
+
+def test_content_bounds_umschliesst_pattern(pa_pattern_gcode):
+    # Bounding-Box aller extrudierten Pattern-Geometrie (Rahmen-Box +
+    # Balken + Chevrons). Aus der GCode-Analyse: X ~100.7..199.3,
+    # Y ~120.8..180.2.
+    model = parse(pa_pattern_gcode)
+    assert model.content_bounds is not None
+    lo, hi = model.content_bounds
+    assert lo.x == pytest.approx(100.731, abs=0.5)
+    assert hi.x == pytest.approx(199.269, abs=0.5)
+    assert lo.y == pytest.approx(120.787, abs=0.5)
+    assert hi.y == pytest.approx(180.2, abs=1.0)

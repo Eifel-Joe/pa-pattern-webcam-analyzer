@@ -1,7 +1,14 @@
 """Tests für das PA-Pattern-Datenmodell."""
 import pytest
 
-from pa_analyzer.model import Chevron, FrameBox, PaGroup, PatternModel, Point
+from pa_analyzer.model import (
+    AnalysisResult,
+    Chevron,
+    FrameBox,
+    PaGroup,
+    PatternModel,
+    Point,
+)
 
 
 def test_point_ist_unveraenderlich():
@@ -39,3 +46,16 @@ def test_framebox_haelt_vier_ecken():
     ecken = (Point(0, 0), Point(0, 1), Point(1, 1), Point(1, 0))
     box = FrameBox(corners=ecken)
     assert len(box.corners) == 4
+
+
+def test_analysisresult_haelt_ergebnisfelder():
+    r = AnalysisResult(
+        best_pa=0.0285,
+        nearest_step=0.028,
+        confidence=0.7,
+        scores=((0.01, 1.2), (0.012, 0.9)),
+    )
+    assert r.best_pa == pytest.approx(0.0285)
+    assert r.nearest_step == pytest.approx(0.028)
+    assert r.confidence == pytest.approx(0.7)
+    assert len(r.scores) == 2
