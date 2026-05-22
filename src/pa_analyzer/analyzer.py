@@ -29,7 +29,7 @@ def analyze_image(image: np.ndarray, gcode_text: str) -> AnalysisResult:
     if (not model.groups or model.frame_box is None
             or model.content_bounds is None):
         raise ValueError(
-            "analyze: GCode enthält kein auswertbares PA-Pattern "
+            "GCode enthält kein auswertbares PA-Pattern "
             "(keine PA-Gruppen, Rahmen-Box oder Druck-Geometrie).")
     mask = filament_mask(image)
     quad = locate_quad(mask)

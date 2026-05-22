@@ -55,3 +55,11 @@ def test_analyze_image_wie_analyze_ueber_pfad(gcode):
     via_image = analyze_image(img, gcode)
     via_path = analyze(FIXTURES / "IMG_3843.HEIC", gcode)
     assert via_image == via_path
+
+
+def test_analyze_image_wirft_bei_unbrauchbarem_gcode():
+    # Die Boundary-Validierung muss auch über den direkten
+    # ndarray-Einstiegspunkt greifen, nicht nur über analyze().
+    img = load_image(FIXTURES / "IMG_3843.HEIC")
+    with pytest.raises(ValueError):
+        analyze_image(img, "G28\nG1 Z5 F300\n")
