@@ -12,6 +12,7 @@ from pa_analyzer.gcode_generator import (
     _num_patterns,
     _pa_values,
     _wall_x_offset,
+    generate,
 )
 
 
@@ -71,3 +72,29 @@ def test_group_advance_konkreter_wert():
     # Dieser Wert deckt sich mit dem Gruppenabstand des echten
     # OrcaSlicer-PA-Patterns (~3.6015 mm) — doppelte Validierung.
     assert _group_advance(GeneratorParams()) == pytest.approx(3.6015, abs=0.001)
+
+
+def test_generate_enthaelt_geruest():
+    g = generate(GeneratorParams())
+    for marker in ("G90", "M83", "PRINT_START", "PRINT_END"):
+        assert marker in g
+
+
+def test_generate_pa_zeilen_anzahl():
+    # num_patterns × num_layers SET_PRESSURE_ADVANCE-Zeilen
+    p = GeneratorParams(pa_start=0.0, pa_end=0.05, pa_step=0.005, num_layers=3)
+    assert generate(p).count("SET_PRESSURE_ADVANCE") == 11 * 3
+
+
+def test_generate_endet_mit_newline():
+    assert generate(GeneratorParams()).endswith("\n")
+
+
+def test_generate_temp_eingebacken():
+    assert "235" in generate(GeneratorParams(temp=235))
+
+
+def test_generate_eigener_start_end_gcode():
+    p = GeneratorParams(start_gcode="MEIN_START", end_gcode="MEIN_ENDE")
+    g = generate(p)
+    assert "MEIN_START" in g and "MEIN_ENDE" in g

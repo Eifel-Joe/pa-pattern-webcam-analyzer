@@ -99,3 +99,92 @@ def _group_advance(p: GeneratorParams) -> float:
         + p.pattern_spacing
         + _line_width(p)
     )
+
+
+def _fmt(v: float) -> str:
+    """Koordinate/PA-Wert mit bis zu 4 Nachkommastellen, ohne überflüssige
+    Nullen. Für den Wertebereich dieses Generators (Koordinaten 1–300,
+    PA 0–0.5) erzeugt :g keine wissenschaftliche Notation."""
+    return f"{round(v, 4):g}"
+
+
+def _fmt_e(v: float) -> str:
+    """Extrusionswert mit bis zu 5 Nachkommastellen."""
+    return f"{round(v, 5):g}"
+
+
+def generate(params: GeneratorParams) -> str:
+    """Erzeugt den vollständigen PA-Pattern-GCode als String."""
+    p = params
+    lw = _line_width(p)
+    dx, dy = _chevron_deltas(p)
+    wall_off = _wall_x_offset(p)
+    adv = _group_advance(p)
+    pa_values = _pa_values(p)
+    e_arm = _extrusion(
+        p.wall_side_length, lw, p.layer_height, p.filament_diameter,
+        p.extrusion_multiplier,
+    )
+    print_f = round(p.speed_print * 60)
+    travel_f = round(p.speed_travel * 60)
+
+    # Pattern-Abmessungen und Bett-Zentrierung
+    pattern_w = (
+        (len(pa_values) - 1) * adv + (p.wall_count - 1) * wall_off + dx
+    )
+    pattern_h = 2 * dy
+    margin = 4.0
+    bx0 = p.bed_x / 2 - (pattern_w + 2 * margin) / 2
+    by0 = p.bed_y / 2 - (pattern_h + 2 * margin) / 2
+    bx1 = bx0 + pattern_w + 2 * margin
+    by1 = by0 + pattern_h + 2 * margin
+    px0 = bx0 + margin  # Start-X des ersten Chevrons
+    py0 = by0 + margin  # Start-Y (untere Arm-Enden)
+
+    out: list[str] = [
+        "; PA-Pattern erzeugt von pa_analyzer (Etappe 1)",
+        f"; pa_start={p.pa_start} pa_end={p.pa_end} pa_step={p.pa_step}",
+        f"; wall_count={p.wall_count} num_layers={p.num_layers}",
+        f"; temp={p.temp} extrusion_multiplier={p.extrusion_multiplier}",
+        "G90",
+        "M83",
+        p.start_gcode,
+        f"M109 S{_fmt(p.temp)}",
+    ]
+
+    # Rahmen-Box auf erster Layer-Höhe (4 achsenparallele extrudierende Moves)
+    e_h = _extrusion(bx1 - bx0, lw, p.layer_height, p.filament_diameter,
+                     p.extrusion_multiplier)
+    e_v = _extrusion(by1 - by0, lw, p.layer_height, p.filament_diameter,
+                     p.extrusion_multiplier)
+    out.append(f"G1 Z{_fmt(p.layer_height)} F{travel_f}")
+    out.append(f"G1 X{_fmt(bx0)} Y{_fmt(by0)} F{travel_f}")
+    out.append(f"G1 X{_fmt(bx0)} Y{_fmt(by1)} E{_fmt_e(e_v)} F{print_f}")
+    out.append(f"G1 X{_fmt(bx1)} Y{_fmt(by1)} E{_fmt_e(e_h)} F{print_f}")
+    out.append(f"G1 X{_fmt(bx1)} Y{_fmt(by0)} E{_fmt_e(e_v)} F{print_f}")
+    out.append(f"G1 X{_fmt(bx0)} Y{_fmt(by0)} E{_fmt_e(e_h)} F{print_f}")
+
+    # Pattern, num_layers mal gestapelt
+    for layer in range(p.num_layers):
+        z = (layer + 1) * p.layer_height
+        out.append(f"G1 Z{_fmt(z)} F{travel_f}")
+        for j, pa in enumerate(pa_values):
+            out.append(f"SET_PRESSURE_ADVANCE ADVANCE={_fmt(pa)}")
+            gx = px0 + j * adv
+            for k in range(p.wall_count):
+                sx = gx + k * wall_off
+                # Travel zum Chevron-Start (trennt die Chevron-Runs)
+                out.append(f"G1 X{_fmt(sx)} Y{_fmt(py0)} F{travel_f}")
+                # Arm 1: Start -> Apex
+                out.append(
+                    f"G1 X{_fmt(sx + dx)} Y{_fmt(py0 + dy)} "
+                    f"E{_fmt_e(e_arm)} F{print_f}"
+                )
+                # Arm 2: Apex -> End
+                out.append(
+                    f"G1 X{_fmt(sx)} Y{_fmt(py0 + 2 * dy)} "
+                    f"E{_fmt_e(e_arm)} F{print_f}"
+                )
+
+    out.append(p.end_gcode)
+    return "\n".join(out) + "\n"
