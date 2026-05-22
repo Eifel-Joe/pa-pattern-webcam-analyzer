@@ -127,7 +127,35 @@ Pattern-Breite) erlauben nur ±3–4 PA-Schritte; jeder Pixel
 Ecken-Fehler wirkt ~4× stärker als beim Handy-Foto. Für ±1-Schritt
 braucht es Handy-Foto-Auflösung (Pattern > ~1500 px breit).
 
-Eine bessere Webcam-Positionierung (Pattern formatfüllend, frontaler)
-bringt mehr als jede Algorithmus-Verbesserung. Dies ist in der
-Etappe-2-Doku und in der Konfidenz-Ausgabe des Tools ehrlich
-abzubilden.
+Eine bessere Webcam-Positionierung (frontaler, näher) bringt mehr als
+jede Algorithmus-Verbesserung. Dies ist in der Konfidenz-Ausgabe des
+Tools ehrlich abzubilden.
+
+## 6. Konsequenz: Zweistufiger Mess-Workflow (Etappe 3)
+
+Die Auflösungs-Grenze aus §5 lässt sich mit einer iterativen
+Verfeinerung über zwei Druck-Läufe weitgehend kompensieren:
+
+- **Lauf 1 (grob):** Pattern über den vollen PA-Bereich → grobe
+  Schätzung (~±2–3 Schritte).
+- **Lauf 2 (fein):** zweites Pattern mit eng um den groben Wert
+  gestaffelten PA-Werten — identische Pattern-Geometrie, nur engere
+  `SET_PRESSURE_ADVANCE`-Werte.
+
+**Wirkprinzip:** Der dominante Webcam-Fehler ist die räumliche
+Lokalisierungs-Ungenauigkeit — sie ist *pattern-relativ* (~Bruchteil
+einer Chevron-Position), nicht absolut. Ein feiner gestaffelter zweiter
+Lauf übersetzt denselben räumlichen Fehler in einen ~2,5× kleineren
+absoluten PA-Fehler. Realistisch wird aus ±2–3 Schritten ~±1 Schritt.
+
+**Grenzen:** Der Lauf-2-Bereich muss die Unsicherheit von Lauf 1 voll
+abdecken (sonst falsches Rand-Minimum). Ein dritter Lauf bringt kaum
+noch etwas (absolutes Mess-Rauschen). Zwei Läufe sind der Sweet Spot.
+Größere Pattern helfen nicht — die Ecken-Detail-Auflösung (px/mm) hängt
+nur an Kamera-Auflösung und Sichtfeld, nicht an der Pattern-Größe.
+
+**Umsetzung (Etappe 3):** CLI bzw. Klipper-Macro durchlaufen den
+Ablauf zweimal; eine Funktion leitet die Lauf-2-Grenzen aus dem
+`AnalysisResult` (best_pa + confidence) von Lauf 1 ab. Die
+Bild→PA-Pipeline aus Etappe 2 bleibt unberührt — sie wertet je einen
+einzelnen Lauf aus.
