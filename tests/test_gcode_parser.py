@@ -131,3 +131,74 @@ def test_content_bounds_umschliesst_pattern(pa_pattern_gcode):
     assert hi.x == pytest.approx(199.269, abs=0.5)
     assert lo.y == pytest.approx(120.787, abs=0.5)
     assert hi.y == pytest.approx(180.2, abs=1.0)
+
+
+# ── Carry-over: G90/G91, M82/M83 (Etappe 3) ───────────────────────────
+
+_BASIS = """\
+G90
+M83
+SET_PRESSURE_ADVANCE ADVANCE=0.02
+G1 X10 Y10 F1000
+G1 X12 Y12 E0.5 F1000
+G1 X10 Y14 E0.5 F1000
+"""
+
+_RELATIV_XY = """\
+G91
+M83
+SET_PRESSURE_ADVANCE ADVANCE=0.02
+G1 X10 Y10 F1000
+G1 X2 Y2 E0.5 F1000
+G1 X-2 Y2 E0.5 F1000
+"""
+
+# Bei M82 trägt der Travel-Move zum Chevron-Start die UNVERÄNDERTE
+# absolute E-Position (5, gesetzt per G92 E5). Ein naiver "E>0 =
+# extrudierend"-Parser würde diesen Travel fälschlich als Extrusion
+# zählen — der Run hätte 3 statt 2 Segmente und ergäbe kein Chevron.
+# Nur die Delta-Logik (E unverändert -> kein Delta -> kein Extrudieren)
+# liefert dasselbe Pattern wie _BASIS. Dieser GCode REDt also gegen den
+# alten Parser.
+_ABSOLUT_E = """\
+G90
+M82
+G92 E5
+SET_PRESSURE_ADVANCE ADVANCE=0.02
+G1 X10 Y10 E5 F1000
+G1 X12 Y12 E5.5 F1000
+G1 X10 Y14 E6 F1000
+"""
+
+# Wie _ABSOLUT_E, aber mit einem zusätzlichen `G92 E0` zwischen den
+# Chevron-Armen. Ohne G92-Behandlung wäre das Delta des letzten Moves
+# 0.5 - 5.5 < 0 (kein Extrudieren) -> kein Chevron.
+_ABSOLUT_E_G92 = """\
+G90
+M82
+G92 E5
+SET_PRESSURE_ADVANCE ADVANCE=0.02
+G1 X10 Y10 E5 F1000
+G1 X12 Y12 E5.5 F1000
+G92 E0
+G1 X10 Y14 E0.5 F1000
+"""
+
+
+def test_parse_g91_relativ_wie_g90_absolut():
+    # Relative XY-Positionierung muss dasselbe Pattern ergeben wie die
+    # absolute Variante mit identischer Geometrie.
+    assert parse(_RELATIV_XY).groups == parse(_BASIS).groups
+
+
+def test_parse_m82_absolut_e_wie_m83_relativ():
+    # Bei M82 wird die Extrusion über das Delta zur vorigen E-Position
+    # bestimmt — der Travel mit unveränderter absoluter E-Position zählt
+    # NICHT als Extrusion. Gleiches Pattern wie die M83-Variante.
+    assert parse(_ABSOLUT_E).groups == parse(_BASIS).groups
+
+
+def test_parse_m82_mit_g92_reset():
+    # G92 E0 setzt den Extruder-Origin zurück; der folgende Move mit
+    # E0.5 ist danach wieder eine Extrusion (Delta +0.5 statt -5).
+    assert parse(_ABSOLUT_E_G92).groups == parse(_BASIS).groups

@@ -28,23 +28,50 @@ class _Move:
 
     x: float
     y: float
-    extruding: bool  # True, wenn die Bewegung Material extrudiert (E > 0)
+    extruding: bool  # True, wenn die Bewegung Material extrudiert
 
 
 def _tokenize(gcode_text: str) -> Iterator[tuple[str, object]]:
     """Yieldet ('pa', wert: float) und ('move', _Move) in Datei-Reihenfolge.
 
-    Der Pattern-GCode nutzt absolute XY-Koordinaten (G90); die Position
-    wird über alle Zeilen hinweg fortgeschrieben. Zeilen ohne XY-Änderung
-    (Retract, reine F-Zeilen) erzeugen kein move-Token.
+    Modus-bewusst: G90/G91 schalten zwischen absoluter und relativer
+    XY-Positionierung, M82/M83 zwischen absoluter und relativer Extrusion;
+    `G92 E<wert>` setzt den Extruder-Origin. Defaults sind G90/M83 — der
+    von diesem Projekt erzeugte GCode nutzt genau diese Modi, daher bleibt
+    sein Parsing unverändert.
+
+    Zeilen ohne XY-Änderung (Retract, reine F-Zeilen) erzeugen kein
+    move-Token.
     """
     cur_x = 0.0
     cur_y = 0.0
+    prev_e = 0.0
+    abs_xy = True   # G90
+    abs_e = False   # M83
     for raw in gcode_text.splitlines():
-        line = raw.strip()
         # GCode-Kommentar entfernen, damit Achsen-Regexes keine Werte
         # aus Kommentartext aufgreifen (z.B. "; X123" wäre sonst ein Treffer).
-        line = line.split(";", 1)[0]
+        line = raw.split(";", 1)[0].strip()
+        if not line:
+            continue
+        word = line.split()[0].upper()
+        if word == "G90":
+            abs_xy = True
+            continue
+        if word == "G91":
+            abs_xy = False
+            continue
+        if word == "M82":
+            abs_e = True
+            continue
+        if word == "M83":
+            abs_e = False
+            continue
+        if word == "G92":
+            me = _AXIS_RE["e"].search(line)
+            if me:
+                prev_e = float(me.group(1))
+            continue
         pa = _PA_RE.match(line)
         if pa:
             yield ("pa", float(pa.group(1)))
@@ -55,12 +82,23 @@ def _tokenize(gcode_text: str) -> Iterator[tuple[str, object]]:
         my = _AXIS_RE["y"].search(line)
         me = _AXIS_RE["e"].search(line)
         if mx:
-            cur_x = float(mx.group(1))
+            val = float(mx.group(1))
+            cur_x = val if abs_xy else cur_x + val
         if my:
-            cur_y = float(my.group(1))
+            val = float(my.group(1))
+            cur_y = val if abs_xy else cur_y + val
+        extruding = False
+        if me:
+            e_val = float(me.group(1))
+            if abs_e:
+                # Absolute Extrusion: nur ein positives Delta zur vorigen
+                # E-Position ist echte Extrusion (ein Retract hat E < prev).
+                extruding = (e_val - prev_e) > 0
+                prev_e = e_val
+            else:
+                extruding = e_val > 0
         if mx or my:
-            e_val = float(me.group(1)) if me else 0.0
-            yield ("move", _Move(cur_x, cur_y, extruding=e_val > 0))
+            yield ("move", _Move(cur_x, cur_y, extruding))
 
 
 # ── Geometrie-Toleranzen ──────────────────────────────────────────────

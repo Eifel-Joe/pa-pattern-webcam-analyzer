@@ -1,4 +1,7 @@
 """Gemeinsame pytest-Fixtures."""
+import functools
+import http.server
+import threading
 from pathlib import Path
 
 import pytest
@@ -12,3 +15,28 @@ def pa_pattern_gcode() -> str:
     return (FIXTURES_DIR / "pa_pattern.gcode").read_text(
         encoding="utf-8", errors="replace"
     )
+
+
+class _QuietHandler(http.server.SimpleHTTPRequestHandler):
+    """SimpleHTTPRequestHandler ohne Request-Logging (leise Tests)."""
+
+    def log_message(self, *args):
+        pass
+
+
+@pytest.fixture
+def http_server():
+    """Lokaler HTTP-Server, der den fixtures-Ordner ausliefert.
+
+    Liefert die Basis-URL; wird nach dem Test sauber beendet.
+    """
+    handler = functools.partial(_QuietHandler, directory=str(FIXTURES_DIR))
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_address[1]}"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
