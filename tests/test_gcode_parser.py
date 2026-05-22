@@ -104,3 +104,17 @@ def test_rahmenbox_korrekte_ausdehnung(pa_pattern_gcode):
     ys = sorted({round(c.y, 3) for c in model.frame_box.corners})
     assert xs == pytest.approx([100.731, 199.269], abs=0.01)
     assert ys == pytest.approx([120.787, 163.213], abs=0.01)
+
+
+def test_parse_leerer_gcode_liefert_leeres_modell():
+    model = parse("")
+    assert model.groups == ()
+    assert model.frame_box is None
+
+
+def test_parse_gcode_ohne_pattern_liefert_keine_gruppen():
+    # Bewegungen ohne SET_PRESSURE_ADVANCE und ohne Chevron-Struktur
+    # ergeben ein leeres Modell statt eines Absturzes.
+    model = parse("G90\nG1 X10 Y10 E1\nG1 X20 Y20 E1\n")
+    assert model.groups == ()
+    assert model.frame_box is None
