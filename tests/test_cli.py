@@ -43,14 +43,18 @@ def test_run_ohne_webcam_url_gibt_fehlercode(tmp_path, capsys):
 
 
 def test_run_ueber_lokalen_http_server(tmp_path, http_server, capsys):
+    report = tmp_path / "report.json"
     cfg = tmp_path / "cfg.json"
     cfg.write_text(json.dumps({
         "webcam_url": f"{http_server}/pa_snap.jpg",
+        "report_path": str(report),
     }), encoding="utf-8")
     rc = main(["--config", str(cfg), "run",
                "--gcode", str(FIXTURES / "pa_pattern.gcode")])
     assert rc == 0
     assert "PA-Analyse-Ergebnis" in capsys.readouterr().out
+    # run schreibt den Report ohne --json nach dem konfigurierten Pfad.
+    assert report.is_file()
 
 
 def test_run_webcam_offline_gibt_fehlercode(tmp_path, capsys):

@@ -70,7 +70,9 @@ def _cmd_run(args: argparse.Namespace) -> int:
     gcode_text = _read_gcode(args.gcode or cfg.gcode_path)
     image = fetch_snapshot(cfg.webcam_url)
     result = analyze_image(image, gcode_text)
-    return _print_report(result, args.json)
+    # Der produktive run-Lauf schreibt immer einen JSON-Report (Spec F6);
+    # --json überschreibt den konfigurierten report_path.
+    return _print_report(result, args.json or cfg.report_path)
 
 
 def _build_parser() -> argparse.ArgumentParser:
