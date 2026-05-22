@@ -3,7 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from pa_analyzer.analyzer import analyze
+from pa_analyzer.analyzer import analyze, analyze_image
+from pa_analyzer.image_loader import load_image
 from pa_analyzer.model import AnalysisResult
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -45,3 +46,12 @@ def test_analyze_wirft_bei_unbrauchbarem_gcode():
     # Absturz tief in der Vision-Pipeline.
     with pytest.raises(ValueError):
         analyze(FIXTURES / "IMG_3843.HEIC", "G28\nG1 Z5 F300\n")
+
+
+def test_analyze_image_wie_analyze_ueber_pfad(gcode):
+    # analyze_image (ndarray-Einstieg) muss exakt dasselbe liefern wie
+    # analyze über den Datei-Pfad.
+    img = load_image(FIXTURES / "IMG_3843.HEIC")
+    via_image = analyze_image(img, gcode)
+    via_path = analyze(FIXTURES / "IMG_3843.HEIC", gcode)
+    assert via_image == via_path
