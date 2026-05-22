@@ -20,6 +20,7 @@ def test_laedt_heic():
     img = load_image(FIXTURES / "IMG_3843.HEIC")
     assert isinstance(img, np.ndarray)
     assert img.ndim == 3 and img.shape[2] == 3
+    assert img.dtype == np.uint8
     # 12-MP-Handy-Foto, EXIF-transponiert
     assert max(img.shape[:2]) == 4032
     assert min(img.shape[:2]) == 3024
@@ -28,3 +29,10 @@ def test_laedt_heic():
 def test_fehlende_datei_wirft():
     with pytest.raises(FileNotFoundError):
         load_image(FIXTURES / "gibt_es_nicht.jpg")
+
+
+def test_unlesbare_datei_wirft_valueerror(tmp_path):
+    kaputt = tmp_path / "kaputt.jpg"
+    kaputt.write_bytes(b"das ist kein gueltiges Bild")
+    with pytest.raises(ValueError):
+        load_image(kaputt)
