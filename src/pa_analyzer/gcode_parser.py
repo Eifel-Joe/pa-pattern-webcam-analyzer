@@ -108,6 +108,8 @@ def _parse_groups(gcode_text: str) -> list[tuple[float, tuple[Chevron, ...]]]:
     pos = Point(0.0, 0.0)
 
     def finish_run() -> None:
+        # Ein Chevron besteht aus genau 2 Segmenten; kürzere oder längere
+        # Runs (z.B. die Rahmen-Box mit 4 Segmenten) sind keine Chevrons.
         if len(run) == 2:
             ch = _chevron_from_run(run[0], run[1])
             if ch is not None:
