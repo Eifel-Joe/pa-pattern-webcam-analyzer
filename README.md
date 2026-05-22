@@ -21,7 +21,8 @@ in den Slicer bleibt dem Nutzer überlassen.
 
 ## Voraussetzungen
 
-- Python ≥ 3.13
+- Python ≥ 3.11 (Raspberry Pi OS Bookworm bringt 3.11 mit; auf Bullseye
+  muss eine neuere Python-Version installiert werden, z.B. via pyenv)
 - Ein Klipper-Drucker mit Webcam und der Erweiterung
   `gcode_shell_command`
 - Abhängigkeiten (von `install.sh` installiert): `opencv-python-headless`,
@@ -75,6 +76,9 @@ pa-analyzer analyze foto.jpg pattern.gcode --json report.json
 
 # Webcam-Snapshot holen und auswerten
 pa-analyzer run
+
+# Zweiter, feinerer Lauf um den groben Wert herum
+pa-analyzer generate -o pattern2.gcode --refine-from report.json
 ```
 
 ## Genauigkeit

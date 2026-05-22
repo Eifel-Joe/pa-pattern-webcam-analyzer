@@ -7,11 +7,11 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="${REPO_DIR}/.venv"
-MIN_PYTHON="3.13"
+MIN_PYTHON="3.11"
 
 echo "PA-Analyzer-Installation in ${REPO_DIR}"
 
-# 1. Python >= 3.13 prüfen (Muss-Kriterium)
+# 1. Python >= 3.11 prüfen (Muss-Kriterium)
 if ! command -v python3 >/dev/null 2>&1; then
     echo "FEHLER: python3 nicht gefunden. Python >= ${MIN_PYTHON} installieren." >&2
     exit 1
