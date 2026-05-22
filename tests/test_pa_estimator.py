@@ -43,9 +43,15 @@ def test_estimate_pa_scores_vollstaendig():
     assert len(result.scores) == 21
 
 
-def test_estimate_pa_konfidenz_im_bereich():
-    result = estimate_pa(_kurve(best_index=9))
-    assert 0.0 <= result.confidence <= 1.0
+def test_estimate_pa_scharfe_kurve_hoehere_konfidenz():
+    # Der reine Bereichscheck 0..1 ist durch np.clip tautologisch.
+    # Aussagekräftig ist: eine ausgeprägte V-Kurve muss eine höhere
+    # Konfidenz liefern als eine flache.
+    flach = [(round(0.010 + i * 0.002, 3), 0.8, 0.3) for i in range(21)]
+    scharf_conf = estimate_pa(_kurve(best_index=9)).confidence
+    flach_conf = estimate_pa(flach).confidence
+    assert 0.0 <= scharf_conf <= 1.0
+    assert scharf_conf > flach_conf
 
 
 def test_estimate_pa_flache_kurve_niedrige_konfidenz():
