@@ -60,3 +60,14 @@ def test_chevron_deltas_bei_90_grad():
 
 def test_group_advance_positiv():
     assert _group_advance(GeneratorParams()) > 0
+
+
+def test_group_advance_konkreter_wert():
+    # Handgerechnet fuer die Default-Parameter (wall_count=3, lw=0.45,
+    # layer_height=0.2, corner_angle=90, pattern_spacing=2.0):
+    # line_spacing = 0.45 - 0.2*(1-pi/4) ~= 0.40708
+    # wall_x_offset = line_spacing / sin(45 Grad) ~= 0.57577
+    # group_advance = 2*0.57577 + 2.0 + 0.45 ~= 3.6015
+    # Dieser Wert deckt sich mit dem Gruppenabstand des echten
+    # OrcaSlicer-PA-Patterns (~3.6015 mm) — doppelte Validierung.
+    assert _group_advance(GeneratorParams()) == pytest.approx(3.6015, abs=0.001)
