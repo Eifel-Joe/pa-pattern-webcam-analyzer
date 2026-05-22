@@ -1,4 +1,6 @@
 """Tests für den Webcam-Snapshot-Abruf."""
+import socket
+
 import numpy as np
 import pytest
 
@@ -13,9 +15,15 @@ def test_fetch_snapshot_liefert_bgr_array(http_server):
 
 
 def test_fetch_snapshot_unerreichbar_wirft_connectionerror():
-    # Port 1 ist privilegiert und hier garantiert ohne laufenden Server.
+    # Einen OS-vergebenen Port binden und sofort schließen — danach ist
+    # er garantiert ohne Listener (sofortiges ECONNREFUSED, plattform-
+    # unabhängig und schnell).
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
     with pytest.raises(ConnectionError):
-        fetch_snapshot("http://127.0.0.1:1/snapshot.jpg")
+        fetch_snapshot(f"http://127.0.0.1:{port}/snapshot.jpg")
 
 
 def test_fetch_snapshot_kein_bild_wirft_valueerror(http_server):
