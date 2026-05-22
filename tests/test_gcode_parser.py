@@ -88,3 +88,19 @@ def test_chevron_arme_kehren_in_x_zurueck(pa_pattern_gcode):
     for g in model.groups:
         for ch in g.chevrons:
             assert ch.start.x == pytest.approx(ch.end.x, abs=0.5)
+
+
+def test_rahmenbox_vier_ecken(pa_pattern_gcode):
+    model = parse(pa_pattern_gcode)
+    assert model.frame_box is not None
+    assert len(model.frame_box.corners) == 4
+
+
+def test_rahmenbox_korrekte_ausdehnung(pa_pattern_gcode):
+    # Aus der GCode-Analyse: aeussere Box X 100.731..199.269,
+    # Y 120.787..163.213.
+    model = parse(pa_pattern_gcode)
+    xs = sorted({round(c.x, 3) for c in model.frame_box.corners})
+    ys = sorted({round(c.y, 3) for c in model.frame_box.corners})
+    assert xs == pytest.approx([100.731, 199.269], abs=0.01)
+    assert ys == pytest.approx([120.787, 163.213], abs=0.01)

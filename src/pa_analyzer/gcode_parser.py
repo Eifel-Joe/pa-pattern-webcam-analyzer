@@ -152,7 +152,53 @@ def _dedupe_by_pa(
     return [seen[k] for k in sorted(seen)]
 
 
+def _axis_parallel(seg: tuple[Point, Point]) -> bool:
+    s, e = seg
+    return abs(s.x - e.x) < _EPS or abs(s.y - e.y) < _EPS
+
+
+def _rectangle_from_run(run: list[tuple[Point, Point]]) -> FrameBox | None:
+    """Prüft, ob die letzten 4 Segmente eines Runs ein geschlossenes,
+    achsenparalleles Rechteck bilden."""
+    if len(run) < 4:
+        return None
+    segs = run[-4:]
+    if not all(_axis_parallel(s) for s in segs):
+        return None
+    if not _close(segs[-1][1], segs[0][0]):  # geschlossen?
+        return None
+    corners = (segs[0][0], segs[1][0], segs[2][0], segs[3][0])
+    xs = {round(c.x, 3) for c in corners}
+    ys = {round(c.y, 3) for c in corners}
+    if len(xs) != 2 or len(ys) != 2:  # echtes Rechteck mit Fläche?
+        return None
+    return FrameBox(corners=corners)
+
+
+def _find_frame_box(gcode_text: str) -> FrameBox | None:
+    """Findet die äußere Rahmen-Box: das erste geschlossene,
+    achsenparallele Rechteck aus 4 konsekutiven extrudierenden Moves."""
+    pos = Point(0.0, 0.0)
+    run: list[tuple[Point, Point]] = []
+    for kind, val in _tokenize(gcode_text):
+        if kind == "pa":
+            run.clear()
+            continue
+        move: _Move = val  # type: ignore[assignment]
+        start, end = pos, Point(move.x, move.y)
+        pos = end
+        if move.extruding:
+            run.append((start, end))
+            box = _rectangle_from_run(run)
+            if box is not None:
+                return box
+        else:
+            run.clear()
+    return None
+
+
 def parse(gcode_text: str) -> PatternModel:
     """Parst PA-Pattern-GCode in ein PatternModel."""
     groups = _dedupe_by_pa(_parse_groups(gcode_text))
-    return PatternModel(groups=tuple(groups), frame_box=None)
+    frame_box = _find_frame_box(gcode_text)
+    return PatternModel(groups=tuple(groups), frame_box=frame_box)
