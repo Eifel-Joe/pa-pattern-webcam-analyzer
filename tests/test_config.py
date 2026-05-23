@@ -96,6 +96,20 @@ def test_load_config_purge_in_start_macro_true(tmp_path):
     assert cfg.purge_in_start_macro is True
 
 
+def test_load_config_cooldown_in_end_macro_default_false(tmp_path):
+    # Ohne Eintrag: False = Tool emittiert eigene Cooldown-Sequenz
+    # (sicher fuer PRINT_ENDs ohne eigene Heizungen-Aus-Logik).
+    cfg = load_config(tmp_path / "missing.conf")
+    assert cfg.cooldown_in_end_macro is False
+
+
+def test_load_config_cooldown_in_end_macro_true(tmp_path):
+    p = tmp_path / "pa_analyzer.conf"
+    p.write_text("[macros]\ncooldown_in_end_macro = true\n", encoding="utf-8")
+    cfg = load_config(p)
+    assert cfg.cooldown_in_end_macro is True
+
+
 def test_load_config_prozent_zeichen_im_macro_bleibt_erhalten(tmp_path):
     # interpolation=None: %-Zeichen werden NICHT als %()s-Interpolation
     # interpretiert (wichtig fuer Klipper-Jinja2-Werte).

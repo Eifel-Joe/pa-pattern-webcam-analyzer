@@ -175,6 +175,19 @@ def test_generate_luefter_layer1_aktiv():
     assert "M106 S76" in g  # round(0.3 * 255) = 76
 
 
+def test_generate_kein_cooldown_wenn_abgeschaltet():
+    # cooldown_at_end=False -> Tool laesst M104/M140/M107 weg.
+    # User-PRINT_END uebernimmt das Heizungen-Aus dann selbst.
+    g = generate(GeneratorParams(cooldown_at_end=False))
+    assert "M104 S0" not in g
+    assert "M140 S0" not in g
+    assert "M107" not in g
+    # PRINT_END muss aber weiterhin emittiert werden:
+    assert "PRINT_END" in g
+    # Analyse-Trigger ebenfalls:
+    assert "RUN_SHELL_COMMAND CMD=pa_analyze" in g
+
+
 def test_generate_endsequenz_cooldown():
     # Vor PRINT_END wird das Hotend, Bett und der Luefter ausgeschaltet
     # (Sicherheits-Netz; PRINT_END macht das ueblicherweise selbst).

@@ -74,6 +74,10 @@ def _cmd_generate(args: argparse.Namespace) -> int:
     # Purge-Linie zieht, unterdrueckt der Generator seine eigene.
     if cfg.purge_in_start_macro:
         gen_overrides["purge_length"] = 0.0
+    # Doppel-Cooldown vermeiden: wenn das User-PRINT_END Heizungen/
+    # Luefter selbst abschaltet, laesst der Generator das weg.
+    if cfg.cooldown_in_end_macro:
+        gen_overrides["cooldown_at_end"] = False
     params = GeneratorParams(
         pa_start=start, pa_end=end, pa_step=step,
         temp=args.temp, bed_temp=args.bed_temp,

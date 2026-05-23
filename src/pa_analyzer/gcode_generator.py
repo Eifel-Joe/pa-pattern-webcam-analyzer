@@ -58,6 +58,7 @@ class GeneratorParams:
     # Klipper-Hooks (start_gcode unterstützt {temp} und {bed_temp})
     extruder_name: str = ""          # leer = SET_PRESSURE_ADVANCE ohne EXTRUDER=
     z_raise_end: float = 5.0         # mm Z-Raise vor Cooldown
+    cooldown_at_end: bool = True     # False: PRINT_END kühlt selbst
     start_gcode: str = "PRINT_START EXTRUDER={temp} BED={bed_temp}"
     end_gcode: str = "PRINT_END"
     analyze_gcode: str = "RUN_SHELL_COMMAND CMD=pa_analyze"
@@ -276,13 +277,15 @@ def generate(params: GeneratorParams) -> str:
                     f"E{_fmt_e(e_arm)} F{print_f}"
                 )
 
-    # End-Sequenz: Retract, Z-Raise, Cooldown (Sicherheits-Netz vor
-    # dem User-PRINT_END), dann analyze-Trigger.
+    # End-Sequenz: Retract, Z-Raise, optionaler Cooldown (Sicherheits-
+    # netz; viele PRINT_END-Macros machen das selbst — dann
+    # cooldown_at_end=False setzen).
     out.extend(retract)
     out.append(f"G1 Z{_fmt(z + p.z_raise_end)} F{travel_f}")
-    out.append("M104 S0")
-    out.append("M140 S0")
-    out.append("M107")
+    if p.cooldown_at_end:
+        out.append("M104 S0")
+        out.append("M140 S0")
+        out.append("M107")
     out.append(p.end_gcode)
     # Letzte Zeile der gedruckten Datei: stößt nach Druckende die
     # Auswertung an (Spec §4 Phase 3). Leeres analyze_gcode -> kein Trailer.

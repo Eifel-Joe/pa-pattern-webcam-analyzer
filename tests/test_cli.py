@@ -117,6 +117,30 @@ def test_generate_skipt_purge_wenn_start_macro_purgt(tmp_path):
     assert "G1 X90 Y150" not in text
 
 
+def test_generate_skipt_cooldown_wenn_end_macro_kuehlt(tmp_path):
+    # Wenn der User in der .conf vermerkt, dass sein PRINT_END schon
+    # Heizungen aus + Luefter aus macht, darf der Generator nicht
+    # zusaetzlich M104 S0 / M140 S0 / M107 emittieren.
+    cfg = tmp_path / "pa_analyzer.conf"
+    cfg.write_text(
+        "[macros]\n"
+        "start_gcode =\n"
+        "    PRINT_START EXTRUDER={temp} BED={bed_temp}\n"
+        "cooldown_in_end_macro = true\n",
+        encoding="utf-8")
+    out = tmp_path / "pattern.gcode"
+    rc = main(["--config", str(cfg), "generate", "-o", str(out),
+               "--pa-start", "0.0", "--pa-end", "0.01", "--pa-step", "0.005"])
+    assert rc == 0
+    text = out.read_text(encoding="utf-8")
+    assert "M104 S0" not in text
+    assert "M140 S0" not in text
+    assert "M107" not in text
+    # PRINT_END + Analyse-Trigger muessen bleiben:
+    assert "PRINT_END" in text
+    assert "RUN_SHELL_COMMAND CMD=pa_analyze" in text
+
+
 def test_generate_uebernimmt_filament_parameter(tmp_path, minimal_conf):
     # Hotend-Temperatur, Bett-Temperatur und Extrusionsfaktor MUESSEN in
     # den GCode einfliessen. Klipper-Konvention: PRINT_START bekommt

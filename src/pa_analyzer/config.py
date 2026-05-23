@@ -50,6 +50,9 @@ class Config:
     # (z.B. ADAPTIVE_PURGE in KAMP-/Kiauh-Setups). Dann unterdrueckt
     # der Generator seine eigene Purge — sonst doppelte Purge-Linie.
     purge_in_start_macro: bool = False
+    # True, wenn das end_gcode-Macro Hotend/Bett/Luefter selbst abschaltet.
+    # Dann laesst der Generator M104 S0 / M140 S0 / M107 weg.
+    cooldown_in_end_macro: bool = False
 
 
 def _stripped_or_none(value: str | None) -> str | None:
@@ -94,4 +97,6 @@ def load_config(path: str | Path) -> Config:
             "macros", "analyze_gcode", fallback=None)),
         purge_in_start_macro=parser.getboolean(
             "macros", "purge_in_start_macro", fallback=False),
+        cooldown_in_end_macro=parser.getboolean(
+            "macros", "cooldown_in_end_macro", fallback=False),
     )

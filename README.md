@@ -108,6 +108,11 @@ unter `[macros]` zur Verfügung (Default `RUN_SHELL_COMMAND CMD=pa_analyze`).
 zusätzlich `purge_in_start_macro = true` — sonst purged das Tool ein
 zweites Mal am linken Bett-Rand (kein Crash, nur Material-Verschwendung).
 
+**Wenn dein `PRINT_END` Hotend/Bett/Lüfter selbst abschaltet** (das
+tun die meisten), setze `cooldown_in_end_macro = true` — sonst sendet
+das Tool zusätzlich `M104 S0` / `M140 S0` / `M107` vor `PRINT_END`
+(in Klipper idempotent, also harmlos, aber unnötig).
+
 **Wenn dein `PRINT_START` weitere Parameter erwartet** (z.B. `MATERIAL`,
 `PRINT_AREA_START`/`_END`, `SOAKTIME`, …), trage sie im `start_gcode`
 direkt mit konkreten Werten ein. Das Tool reicht nur die für die
