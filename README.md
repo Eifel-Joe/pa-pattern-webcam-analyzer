@@ -100,4 +100,4 @@ Alle Tests laufen ohne Drucker.
 
 ## Lizenz
 
-Siehe Repository.
+Dieses Projekt steht unter der MIT-Lizenz — siehe [LICENSE](LICENSE).
