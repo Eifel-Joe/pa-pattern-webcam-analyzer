@@ -55,11 +55,12 @@ def _cmd_generate(args: argparse.Namespace) -> int:
     # kommen — sie wechseln je Lauf, nicht je Pattern-Bereich.
     params = GeneratorParams(
         pa_start=start, pa_end=end, pa_step=step,
-        temp=args.temp, extrusion_multiplier=args.flow)
+        temp=args.temp, bed_temp=args.bed_temp,
+        extrusion_multiplier=args.flow)
     _atomic_write(out_path, generate(params))
     print(f"GCode geschrieben: {out_path}  "
           f"(PA {start}..{end}, Schritt {step}, "
-          f"Temp {args.temp}°C, Flow {args.flow})")
+          f"Hotend {args.temp}°C, Bett {args.bed_temp}°C, Flow {args.flow})")
     return 0
 
 
@@ -95,8 +96,9 @@ def _build_parser() -> argparse.ArgumentParser:
     g.add_argument("--pa-end", type=float, default=_DEFAULTS.pa_end)
     g.add_argument("--pa-step", type=float, default=_DEFAULTS.pa_step)
     g.add_argument("--temp", type=float, default=_DEFAULTS.temp,
-                   help="Drucktemperatur in °C (wird per M109 in den GCode "
-                        "eingebacken)")
+                   help="Hotend-Temperatur in °C (M109)")
+    g.add_argument("--bed-temp", type=float, default=_DEFAULTS.bed_temp,
+                   help="Bett-Temperatur in °C (M190)")
     g.add_argument("--flow", type=float,
                    default=_DEFAULTS.extrusion_multiplier,
                    help="Extrusionsfaktor / Flow Ratio (Faktor um 1.0)")

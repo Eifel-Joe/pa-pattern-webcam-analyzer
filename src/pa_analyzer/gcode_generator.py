@@ -34,6 +34,7 @@ class GeneratorParams:
     layer_height: float = 0.2
     # Prozess
     temp: float = 240.0
+    bed_temp: float = 60.0
     extrusion_multiplier: float = 1.0
     speed_print: float = 60.0
     speed_travel: float = 120.0
@@ -146,9 +147,13 @@ def generate(params: GeneratorParams) -> str:
         "; PA-Pattern erzeugt von pa_analyzer (Etappe 1)",
         f"; pa_start={p.pa_start} pa_end={p.pa_end} pa_step={p.pa_step}",
         f"; wall_count={p.wall_count} num_layers={p.num_layers}",
-        f"; temp={p.temp} extrusion_multiplier={p.extrusion_multiplier}",
+        f"; temp={p.temp} bed_temp={p.bed_temp} "
+        f"extrusion_multiplier={p.extrusion_multiplier}",
         "G90",
         "M83",
+        # Bett vor PRINT_START heizen (laeuft parallel zu Homing etc.);
+        # Hotend nach PRINT_START, damit nichts unter heisser Duese sabbert.
+        f"M190 S{_fmt(p.bed_temp)}",
         p.start_gcode,
         f"M109 S{_fmt(p.temp)}",
     ]

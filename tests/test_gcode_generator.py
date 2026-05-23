@@ -94,6 +94,17 @@ def test_generate_temp_eingebacken():
     assert "235" in generate(GeneratorParams(temp=235))
 
 
+def test_generate_baeckt_bed_temp_ein():
+    # Bett-Temperatur muss ebenfalls in den GCode einfliessen (M190 vor
+    # PRINT_START, damit das Bett vor dem Hauptablauf heiss ist).
+    g = generate(GeneratorParams(bed_temp=70))
+    assert "M190 S70" in g
+    assert "bed_temp=70" in g  # Header dokumentiert den Wert
+    # M190 erscheint vor PRINT_START (Standard-Reihenfolge):
+    zeilen = g.splitlines()
+    assert zeilen.index("M190 S70") < zeilen.index("PRINT_START")
+
+
 def test_generate_eigener_start_end_gcode():
     p = GeneratorParams(start_gcode="MEIN_START", end_gcode="MEIN_ENDE")
     g = generate(p)
