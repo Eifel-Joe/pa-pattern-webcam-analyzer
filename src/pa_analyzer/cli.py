@@ -50,10 +50,16 @@ def _cmd_generate(args: argparse.Namespace) -> int:
         start, end, step = refine_bounds(read_json(args.refine_from))
     else:
         start, end, step = args.pa_start, args.pa_end, args.pa_step
-    params = GeneratorParams(pa_start=start, pa_end=end, pa_step=step)
+    # temp und flow gehen unabhaengig vom Refine-Pfad ein: filament-
+    # spezifische Werte muessen vom Aufrufer (User / PA_CALIBRATE-Macro)
+    # kommen — sie wechseln je Lauf, nicht je Pattern-Bereich.
+    params = GeneratorParams(
+        pa_start=start, pa_end=end, pa_step=step,
+        temp=args.temp, extrusion_multiplier=args.flow)
     _atomic_write(out_path, generate(params))
     print(f"GCode geschrieben: {out_path}  "
-          f"(PA {start}..{end}, Schritt {step})")
+          f"(PA {start}..{end}, Schritt {step}, "
+          f"Temp {args.temp}°C, Flow {args.flow})")
     return 0
 
 
@@ -88,6 +94,12 @@ def _build_parser() -> argparse.ArgumentParser:
     g.add_argument("--pa-start", type=float, default=_DEFAULTS.pa_start)
     g.add_argument("--pa-end", type=float, default=_DEFAULTS.pa_end)
     g.add_argument("--pa-step", type=float, default=_DEFAULTS.pa_step)
+    g.add_argument("--temp", type=float, default=_DEFAULTS.temp,
+                   help="Drucktemperatur in °C (wird per M109 in den GCode "
+                        "eingebacken)")
+    g.add_argument("--flow", type=float,
+                   default=_DEFAULTS.extrusion_multiplier,
+                   help="Extrusionsfaktor / Flow Ratio (Faktor um 1.0)")
     g.add_argument("--refine-from",
                    help="Report-JSON aus Lauf 1 für die Lauf-2-Grenzen")
     g.set_defaults(func=_cmd_generate)
