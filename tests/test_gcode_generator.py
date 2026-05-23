@@ -98,3 +98,19 @@ def test_generate_eigener_start_end_gcode():
     p = GeneratorParams(start_gcode="MEIN_START", end_gcode="MEIN_ENDE")
     g = generate(p)
     assert "MEIN_START" in g and "MEIN_ENDE" in g
+
+
+def test_generate_haengt_analyze_trigger_an():
+    # Die letzte Zeile stößt nach Druckende die Auswertung an, direkt
+    # nach dem end_gcode (PRINT_END).
+    zeilen = generate(GeneratorParams()).strip().splitlines()
+    assert zeilen[-1] == "RUN_SHELL_COMMAND CMD=pa_analyze"
+    assert zeilen[-2] == "PRINT_END"
+
+
+def test_generate_leeres_analyze_gcode_kein_trigger():
+    # Leeres analyze_gcode -> kein Trigger (Generator bleibt für
+    # Nicht-Klipper-Nutzung verwendbar).
+    g = generate(GeneratorParams(analyze_gcode=""))
+    assert "RUN_SHELL_COMMAND" not in g
+    assert g.strip().splitlines()[-1] == "PRINT_END"
