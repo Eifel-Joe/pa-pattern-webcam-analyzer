@@ -101,3 +101,12 @@ Alle Tests laufen ohne Drucker.
 ## Lizenz
 
 Dieses Projekt steht unter der MIT-Lizenz — siehe [LICENSE](LICENSE).
+
+## Danksagung
+
+Der Pattern-Generator dieses Werkzeugs leitet seine Geometrie- und
+Flow-Mathematik aus Andrew Ellis' offen verfügbarem
+[Pressure_Linear_Advance_Tool](https://github.com/AndrewEllis93/Pressure_Linear_Advance_Tool)
+ab — Teil seines umfassenden
+[Print Tuning Guide](https://ellis3dp.com/Print-Tuning-Guide/). Vielen
+Dank für die ausgezeichnete Vorarbeit.
