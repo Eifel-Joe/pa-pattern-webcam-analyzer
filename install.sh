@@ -46,8 +46,9 @@ fi
 cat <<'HINWEIS'
 
 Installation abgeschlossen. Nächste Schritte:
-  1. pa_analyzer.json anlegen/anpassen (webcam_url, gcode_path,
-     report_path) — siehe README.md.
+  1. pa_analyzer.example.conf nach pa_analyzer.conf kopieren und an
+     die eigene Klipper-Installation anpassen (insbesondere die
+     PRINT_START/PRINT_END-Aufrufe unter [macros]). Siehe README.md.
   2. In die printer.cfg aufnehmen:  [include pa_calibrate.cfg]
      (Datei aus dem klipper/-Ordner dieses Repos.)
   3. Pattern drucken und auswerten:  PA_CALIBRATE

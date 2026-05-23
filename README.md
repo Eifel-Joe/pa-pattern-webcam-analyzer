@@ -59,32 +59,49 @@ installiert das Paket.
 
 ## Konfiguration
 
-Eine Datei `pa_analyzer.json` im Projektverzeichnis anlegen:
+**Einstellungsvoraussetzung:** Die Vorlage `pa_analyzer.example.conf`
+nach `pa_analyzer.conf` kopieren und an die eigene Klipper-Installation
+anpassen. Ohne diese Datei (genauer: ohne `start_gcode` darin) bricht
+`pa-analyzer generate` mit einer klaren Meldung ab — PRINT_START-
+Aufrufe sind nicht genormt, und der Generator muss exakt deinen Aufruf
+in den GCode einbauen.
 
-```json
-{
-  "webcam_url": "http://DRUCKER-IP/webcam/?action=snapshot",
-  "gcode_path": "/home/pi/printer_data/gcodes/pa_calibration.gcode",
-  "report_path": "/home/pi/printer_data/pa_report.json",
-  "start_gcode": "PRINT_START EXTRUDER={temp} BED={bed_temp}"
-}
+```bash
+cp pa_analyzer.example.conf pa_analyzer.conf
+$EDITOR pa_analyzer.conf
 ```
 
-`start_gcode` ist optional — der Default `PRINT_START EXTRUDER={temp}
-BED={bed_temp}` ist Klipper-Standard. Wer eine abweichende
-`PRINT_START`-Signatur hat, passt ihn hier an:
+Aufbau (INI-Format):
 
-| PRINT_START-Variante | Konfiguration |
+```ini
+[webcam]
+url = http://DRUCKER-IP/webcam/?action=snapshot
+
+[paths]
+gcode_path = /home/pi/printer_data/gcodes/pa_calibration.gcode
+report_path = /home/pi/printer_data/pa_report.json
+
+[macros]
+# Multi-line: Folgezeilen einrücken. {temp}/{bed_temp} substituiert
+# der Generator mit den Werten aus PA_CALIBRATE TEMP=.../BED_TEMP=...
+start_gcode =
+    PRINT_START EXTRUDER={temp} BED={bed_temp}
+end_gcode =
+    PRINT_END
+```
+
+Häufige PRINT_START-Signaturen als Anhaltspunkt:
+
+| PRINT_START-Variante | start_gcode-Eintrag |
 |---|---|
-| Klipper-Standard | `"PRINT_START EXTRUDER={temp} BED={bed_temp}"` |
-| Klippain / mancher Kiauh-Setup | `"PRINT_START HOTEND={temp} BED_TEMP={bed_temp}"` |
-| Mit Material-Hinweis | `"PRINT_START EXTRUDER={temp} BED={bed_temp} MATERIAL=PLA"` |
-| Kurzform | `"PRINT_START T={temp} B={bed_temp}"` |
+| Klipper-Standard | `PRINT_START EXTRUDER={temp} BED={bed_temp}` |
+| Klippain / mancher Kiauh-Setup | `PRINT_START HOTEND={temp} BED_TEMP={bed_temp}` |
+| Mit Material-Hinweis | `PRINT_START EXTRUDER={temp} BED={bed_temp} MATERIAL=PLA` |
+| Kurzform | `PRINT_START T={temp} B={bed_temp}` |
 
 Platzhalter `{temp}` und `{bed_temp}` werden eingesetzt; andere
-`{Platzhalter}` bleiben unverändert. Analog stehen `end_gcode` (Default
-`PRINT_END`) und `analyze_gcode` (Default `RUN_SHELL_COMMAND CMD=pa_analyze`)
-zur Verfügung.
+`{Platzhalter}` bleiben unverändert. Optional steht `analyze_gcode`
+unter `[macros]` zur Verfügung (Default `RUN_SHELL_COMMAND CMD=pa_analyze`).
 
 ## Klipper-Einbindung
 

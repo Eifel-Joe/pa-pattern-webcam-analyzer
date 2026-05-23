@@ -17,6 +17,20 @@ def pa_pattern_gcode() -> str:
     )
 
 
+@pytest.fixture
+def minimal_conf(tmp_path) -> Path:
+    """Minimal-pa_analyzer.conf mit start_gcode — Voraussetzung für
+    `pa-analyzer generate` (PRINT_START-Signaturen sind nicht genormt;
+    ohne explizite Konfiguration bricht generate ab)."""
+    cfg = tmp_path / "pa_analyzer.conf"
+    cfg.write_text(
+        "[macros]\n"
+        "start_gcode =\n"
+        "    PRINT_START EXTRUDER={temp} BED={bed_temp}\n",
+        encoding="utf-8")
+    return cfg
+
+
 class _QuietHandler(http.server.SimpleHTTPRequestHandler):
     """SimpleHTTPRequestHandler ohne Request-Logging (leise Tests)."""
 

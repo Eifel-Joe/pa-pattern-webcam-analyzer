@@ -45,17 +45,26 @@ def _print_report(result: AnalysisResult, json_path: str | None) -> int:
 
 def _cmd_generate(args: argparse.Namespace) -> int:
     cfg = load_config(args.config)
+    # PRINT_START-Aufrufe sind nicht genormt — die Konfiguration ist
+    # eine Einstellungsvoraussetzung, ohne die das Tool kein
+    # funktionsfaehiges Pattern fuer den jeweiligen Drucker erzeugen
+    # kann. Klarer Abbruch statt heimlicher Defaults.
+    if cfg.start_gcode is None:
+        print(
+            f"Fehler: start_gcode ist in {args.config} nicht gesetzt. "
+            "PRINT_START-Signaturen sind nicht genormt — kopiere "
+            "pa_analyzer.example.conf nach pa_analyzer.conf und trage "
+            "deinen PRINT_START-Aufruf unter [macros] ein.",
+            file=sys.stderr)
+        return 1
     out_path = Path(args.output or cfg.gcode_path)
     if args.refine_from:
         start, end, step = refine_bounds(read_json(args.refine_from))
     else:
         start, end, step = args.pa_start, args.pa_end, args.pa_step
-    # temp und flow gehen unabhaengig vom Refine-Pfad ein: filament-
-    # spezifische Werte muessen vom Aufrufer (User / PA_CALIBRATE-Macro)
-    # kommen — sie wechseln je Lauf, nicht je Pattern-Bereich.
-    # Config kann start_gcode/end_gcode/analyze_gcode ueberschreiben
-    # (PRINT_START-Signaturen sind nicht genormt). None -> Default
-    # aus GeneratorParams.
+    # Config-Overrides fuer die *_gcode-Felder von GeneratorParams.
+    # temp/flow/fan kommen unabhaengig vom Refine-Pfad ueber die CLI
+    # (sie wechseln je Lauf, nicht je Pattern-Bereich).
     gen_overrides = {k: v for k, v in (
         ("start_gcode", cfg.start_gcode),
         ("end_gcode", cfg.end_gcode),
@@ -96,8 +105,9 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="pa-analyzer",
         description="Automatische Pressure-Advance-Kalibrierung.")
-    parser.add_argument("--config", default="pa_analyzer.json",
-                        help="Pfad zur JSON-Konfiguration")
+    parser.add_argument("--config", default="pa_analyzer.conf",
+                        help="Pfad zur INI-Konfiguration (siehe "
+                             "pa_analyzer.example.conf)")
     sub = parser.add_subparsers(dest="command", required=True)
 
     g = sub.add_parser("generate", help="Pattern-GCode erzeugen")

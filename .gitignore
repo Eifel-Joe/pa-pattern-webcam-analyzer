@@ -5,6 +5,9 @@ reference/
 /MEMORY.md
 # Lokale Claude-Code-Einstellungen
 .claude/
+# Pro-Drucker-Konfiguration des Nutzers (enthaelt seine PRINT_START/-END-
+# Aufrufe und ggf. die Webcam-URL); pa_analyzer.example.conf bleibt im Repo.
+/pa_analyzer.conf
 
 # ── Python ───────────────────────────────────────────────────────────
 __pycache__/
