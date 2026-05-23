@@ -103,6 +103,18 @@ Platzhalter `{temp}` und `{bed_temp}` werden eingesetzt; andere
 `{Platzhalter}` bleiben unverändert. Optional steht `analyze_gcode`
 unter `[macros]` zur Verfügung (Default `RUN_SHELL_COMMAND CMD=pa_analyze`).
 
+**Wenn dein `PRINT_START` weitere Parameter erwartet** (z.B. `MATERIAL`,
+`PRINT_AREA_START`/`_END`, `SOAKTIME`, …), trage sie im `start_gcode`
+direkt mit konkreten Werten ein. Das Tool reicht nur die für die
+PA-Kalibrierung relevanten Werte (Hotend-/Bett-Temperatur,
+Extrusionsfaktor, Lüfter) durch — alles übrige Drucker-Setup ist Sache
+der Konfiguration:
+
+```ini
+start_gcode =
+    PRINT_START EXTRUDER_TEMP={temp} BED_TEMP={bed_temp} MATERIAL=0 PRINT_AREA_START=25,25 PRINT_AREA_END=275,275
+```
+
 ## Klipper-Einbindung
 
 `klipper/pa_calibrate.cfg` in die `printer.cfg` aufnehmen:
