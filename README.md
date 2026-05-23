@@ -65,9 +65,26 @@ Eine Datei `pa_analyzer.json` im Projektverzeichnis anlegen:
 {
   "webcam_url": "http://DRUCKER-IP/webcam/?action=snapshot",
   "gcode_path": "/home/pi/printer_data/gcodes/pa_calibration.gcode",
-  "report_path": "/home/pi/printer_data/pa_report.json"
+  "report_path": "/home/pi/printer_data/pa_report.json",
+  "start_gcode": "PRINT_START EXTRUDER={temp} BED={bed_temp}"
 }
 ```
+
+`start_gcode` ist optional — der Default `PRINT_START EXTRUDER={temp}
+BED={bed_temp}` ist Klipper-Standard. Wer eine abweichende
+`PRINT_START`-Signatur hat, passt ihn hier an:
+
+| PRINT_START-Variante | Konfiguration |
+|---|---|
+| Klipper-Standard | `"PRINT_START EXTRUDER={temp} BED={bed_temp}"` |
+| Klippain / mancher Kiauh-Setup | `"PRINT_START HOTEND={temp} BED_TEMP={bed_temp}"` |
+| Mit Material-Hinweis | `"PRINT_START EXTRUDER={temp} BED={bed_temp} MATERIAL=PLA"` |
+| Kurzform | `"PRINT_START T={temp} B={bed_temp}"` |
+
+Platzhalter `{temp}` und `{bed_temp}` werden eingesetzt; andere
+`{Platzhalter}` bleiben unverändert. Analog stehen `end_gcode` (Default
+`PRINT_END`) und `analyze_gcode` (Default `RUN_SHELL_COMMAND CMD=pa_analyze`)
+zur Verfügung.
 
 ## Klipper-Einbindung
 

@@ -57,6 +57,25 @@ def test_run_ueber_lokalen_http_server(tmp_path, http_server, capsys):
     assert report.is_file()
 
 
+def test_generate_honoriert_config_start_gcode(tmp_path):
+    # Wenn config.json einen abweichenden start_gcode hat (andere
+    # PRINT_START-Signatur), muss die CLI ihn in den erzeugten GCode
+    # einbauen — Platzhalter {temp}/{bed_temp} werden substituiert.
+    cfg = tmp_path / "cfg.json"
+    cfg.write_text(json.dumps({
+        "start_gcode": "PRINT_START HOTEND={temp} BED_TEMP={bed_temp} "
+                       "MATERIAL=PLA",
+    }), encoding="utf-8")
+    out = tmp_path / "pattern.gcode"
+    rc = main(["--config", str(cfg), "generate", "-o", str(out),
+               "--temp", "215", "--bed-temp", "60"])
+    assert rc == 0
+    text = out.read_text(encoding="utf-8")
+    assert "PRINT_START HOTEND=215 BED_TEMP=60 MATERIAL=PLA" in text
+    # Der bisherige Default darf NICHT erscheinen:
+    assert "PRINT_START EXTRUDER=215 BED=60" not in text
+
+
 def test_generate_uebernimmt_filament_parameter(tmp_path):
     # Hotend-Temperatur, Bett-Temperatur und Extrusionsfaktor MUESSEN in
     # den GCode einfliessen. Klipper-Konvention: PRINT_START bekommt

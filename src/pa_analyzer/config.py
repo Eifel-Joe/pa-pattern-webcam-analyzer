@@ -13,11 +13,22 @@ from pathlib import Path
 @dataclass(frozen=True)
 class Config:
     """Laufzeit-Konfiguration. Alle Felder haben Defaults, sodass das
-    Werkzeug auch ohne Konfigurationsdatei läuft."""
+    Werkzeug auch ohne Konfigurationsdatei läuft.
+
+    Die `*_gcode`-Felder sind Override-Mechanismen für die
+    `GeneratorParams`-Defaults: `None` heißt "nicht überschreiben"
+    (Generator-Default greift). So gibt es nur EINE Quelle der
+    Wahrheit für die Defaults (in `GeneratorParams`).
+    """
 
     webcam_url: str = ""
     gcode_path: str = "pa_calibration.gcode"
     report_path: str = "pa_report.json"
+    # PRINT_START-Signaturen sind nicht genormt — Override in JSON setzen.
+    # Platzhalter {temp} und {bed_temp} werden vom Generator substituiert.
+    start_gcode: str | None = None
+    end_gcode: str | None = None
+    analyze_gcode: str | None = None
 
 
 def load_config(path: str | Path) -> Config:

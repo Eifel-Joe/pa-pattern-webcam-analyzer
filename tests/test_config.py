@@ -31,3 +31,26 @@ def test_load_config_ignoriert_unbekannte_schluessel(tmp_path):
     cfg = load_config(p)
     assert cfg.webcam_url == "http://drucker/snapshot"
     assert cfg.gcode_path == "pa_calibration.gcode"  # Default
+
+
+def test_load_config_start_gcode_default_none(tmp_path):
+    # Ohne Eintrag bleibt start_gcode None -> CLI nimmt den
+    # GeneratorParams-Default. Keine Default-Duplikation zwischen
+    # Config und GeneratorParams.
+    cfg = load_config(tmp_path / "missing.json")
+    assert cfg.start_gcode is None
+    assert cfg.end_gcode is None
+    assert cfg.analyze_gcode is None
+
+
+def test_load_config_liest_start_gcode_override(tmp_path):
+    # PRINT_START-Signaturen sind nicht genormt — der Override muss aus
+    # der JSON gelesen werden.
+    p = tmp_path / "config.json"
+    p.write_text(json.dumps({
+        "start_gcode": "PRINT_START HOTEND={temp} BED_TEMP={bed_temp} "
+                       "MATERIAL=PLA",
+    }), encoding="utf-8")
+    cfg = load_config(p)
+    assert cfg.start_gcode == ("PRINT_START HOTEND={temp} BED_TEMP={bed_temp} "
+                               "MATERIAL=PLA")

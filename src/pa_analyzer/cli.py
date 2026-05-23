@@ -53,10 +53,19 @@ def _cmd_generate(args: argparse.Namespace) -> int:
     # temp und flow gehen unabhaengig vom Refine-Pfad ein: filament-
     # spezifische Werte muessen vom Aufrufer (User / PA_CALIBRATE-Macro)
     # kommen — sie wechseln je Lauf, nicht je Pattern-Bereich.
+    # Config kann start_gcode/end_gcode/analyze_gcode ueberschreiben
+    # (PRINT_START-Signaturen sind nicht genormt). None -> Default
+    # aus GeneratorParams.
+    gen_overrides = {k: v for k, v in (
+        ("start_gcode", cfg.start_gcode),
+        ("end_gcode", cfg.end_gcode),
+        ("analyze_gcode", cfg.analyze_gcode),
+    ) if v is not None}
     params = GeneratorParams(
         pa_start=start, pa_end=end, pa_step=step,
         temp=args.temp, bed_temp=args.bed_temp,
-        extrusion_multiplier=args.flow, fan_speed=args.fan)
+        extrusion_multiplier=args.flow, fan_speed=args.fan,
+        **gen_overrides)
     _atomic_write(out_path, generate(params))
     print(f"GCode geschrieben: {out_path}  "
           f"(PA {start}..{end}, Schritt {step}, "
