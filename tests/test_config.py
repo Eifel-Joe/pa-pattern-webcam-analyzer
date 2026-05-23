@@ -80,6 +80,22 @@ def test_load_config_kaputte_ini_wirft_valueerror(tmp_path):
         load_config(p)
 
 
+def test_load_config_purge_in_start_macro_default_false(tmp_path):
+    # Ohne Eintrag: False = Tool emittiert seine eigene Purge-Linie
+    # (sicher fuer PRINT_STARTs ohne eigene Purge).
+    cfg = load_config(tmp_path / "missing.conf")
+    assert cfg.purge_in_start_macro is False
+
+
+def test_load_config_purge_in_start_macro_true(tmp_path):
+    # User setzt True, wenn sein PRINT_START schon eine Purge-Linie
+    # zieht (z.B. ADAPTIVE_PURGE) — Tool emittiert dann keine zweite.
+    p = tmp_path / "pa_analyzer.conf"
+    p.write_text("[macros]\npurge_in_start_macro = true\n", encoding="utf-8")
+    cfg = load_config(p)
+    assert cfg.purge_in_start_macro is True
+
+
 def test_load_config_prozent_zeichen_im_macro_bleibt_erhalten(tmp_path):
     # interpolation=None: %-Zeichen werden NICHT als %()s-Interpolation
     # interpretiert (wichtig fuer Klipper-Jinja2-Werte).

@@ -46,6 +46,10 @@ class Config:
     start_gcode: str | None = None
     end_gcode: str | None = None
     analyze_gcode: str | None = None
+    # True, wenn das start_gcode-Macro bereits eine Purge-Linie zieht
+    # (z.B. ADAPTIVE_PURGE in KAMP-/Kiauh-Setups). Dann unterdrueckt
+    # der Generator seine eigene Purge — sonst doppelte Purge-Linie.
+    purge_in_start_macro: bool = False
 
 
 def _stripped_or_none(value: str | None) -> str | None:
@@ -88,4 +92,6 @@ def load_config(path: str | Path) -> Config:
             "macros", "end_gcode", fallback=None)),
         analyze_gcode=_stripped_or_none(parser.get(
             "macros", "analyze_gcode", fallback=None)),
+        purge_in_start_macro=parser.getboolean(
+            "macros", "purge_in_start_macro", fallback=False),
     )

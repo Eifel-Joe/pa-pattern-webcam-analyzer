@@ -93,6 +93,30 @@ def test_generate_honoriert_config_start_gcode(tmp_path):
     assert "PRINT_START EXTRUDER=215 BED=60" not in text
 
 
+def test_generate_skipt_purge_wenn_start_macro_purgt(tmp_path):
+    # Wenn der User in der .conf vermerkt, dass sein PRINT_START schon
+    # eine Purge-Linie zieht (purge_in_start_macro = true), darf der
+    # Generator KEINE zweite emittieren — doppelter Purge waere nur
+    # Material-Verschwendung.
+    cfg = tmp_path / "pa_analyzer.conf"
+    cfg.write_text(
+        "[macros]\n"
+        "start_gcode =\n"
+        "    PRINT_START EXTRUDER={temp} BED={bed_temp}\n"
+        "purge_in_start_macro = true\n",
+        encoding="utf-8")
+    out = tmp_path / "pattern.gcode"
+    rc = main(["--config", str(cfg), "generate", "-o", str(out),
+               "--pa-start", "0.0", "--pa-end", "0.01", "--pa-step", "0.005"])
+    assert rc == 0
+    text = out.read_text(encoding="utf-8")
+    # Header dokumentiert, dass Purge aus ist:
+    assert "purge_length=0.0" in text
+    # Default-Purge-End-Position (X10+80=90 bei bed_y/2=150) darf
+    # nicht im Output stehen:
+    assert "G1 X90 Y150" not in text
+
+
 def test_generate_uebernimmt_filament_parameter(tmp_path, minimal_conf):
     # Hotend-Temperatur, Bett-Temperatur und Extrusionsfaktor MUESSEN in
     # den GCode einfliessen. Klipper-Konvention: PRINT_START bekommt

@@ -103,6 +103,11 @@ Platzhalter `{temp}` und `{bed_temp}` werden eingesetzt; andere
 `{Platzhalter}` bleiben unverändert. Optional steht `analyze_gcode`
 unter `[macros]` zur Verfügung (Default `RUN_SHELL_COMMAND CMD=pa_analyze`).
 
+**Wenn dein `PRINT_START` selbst eine Purge-Linie zieht** (z.B.
+`ADAPTIVE_PURGE` in KAMP-/Kiauh-Setups), setze unter `[macros]`
+zusätzlich `purge_in_start_macro = true` — sonst purged das Tool ein
+zweites Mal am linken Bett-Rand (kein Crash, nur Material-Verschwendung).
+
 **Wenn dein `PRINT_START` weitere Parameter erwartet** (z.B. `MATERIAL`,
 `PRINT_AREA_START`/`_END`, `SOAKTIME`, …), trage sie im `start_gcode`
 direkt mit konkreten Werten ein. Das Tool reicht nur die für die
