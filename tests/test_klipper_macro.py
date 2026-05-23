@@ -16,13 +16,15 @@ def test_macro_enthaelt_alle_sektionen():
 
 
 def test_macro_uebergibt_filament_parameter():
-    # PA_CALIBRATE MUSS TEMP, BED_TEMP und FLOW als Macro-Parameter
+    # PA_CALIBRATE MUSS TEMP, BED_TEMP, FLOW und FAN als Macro-Parameter
     # annehmen und an pa_generate weiterreichen (Spec §5 Entscheidung 2:
     # filament-spezifische Werte werden in den GCode eingebacken).
     text = _CFG.read_text(encoding="utf-8")
     assert "params.TEMP" in text
     assert "params.BED_TEMP" in text
     assert "params.FLOW" in text
+    assert "params.FAN" in text
     assert "--temp" in text
     assert "--bed-temp" in text
     assert "--flow" in text
+    assert "--fan" in text

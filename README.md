@@ -77,12 +77,16 @@ Eine Datei `pa_analyzer.json` im Projektverzeichnis anlegen:
 [include pa_calibrate.cfg]
 ```
 
-Danach in der Klipper-Konsole — `TEMP` (Hotend), `BED_TEMP` (Bett) und
-`FLOW` an das gedruckte Filament anpassen (werden in den GCode
-eingebacken):
+Danach in der Klipper-Konsole — `TEMP` (Hotend), `BED_TEMP` (Bett),
+`FLOW` (Extrusionsfaktor) und `FAN` (Lüfter ab Layer 2, 0..1) an das
+gedruckte Filament anpassen (werden in den GCode eingebacken):
 
 ```
-PA_CALIBRATE PA_START=0.0 PA_END=0.08 PA_STEP=0.005 TEMP=230 BED_TEMP=60 FLOW=1.0
+# PLA-typisch:
+PA_CALIBRATE PA_START=0.0 PA_END=0.08 PA_STEP=0.005 TEMP=215 BED_TEMP=60 FLOW=1.0 FAN=1.0
+
+# PETG/ABS-typisch (Lüfter aus oder niedrig):
+PA_CALIBRATE PA_START=0.0 PA_END=0.08 PA_STEP=0.005 TEMP=240 BED_TEMP=80 FLOW=1.0 FAN=0.3
 ```
 
 ## Nutzung der CLI (eigenständig)

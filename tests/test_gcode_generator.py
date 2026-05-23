@@ -94,15 +94,105 @@ def test_generate_temp_eingebacken():
     assert "235" in generate(GeneratorParams(temp=235))
 
 
-def test_generate_baeckt_bed_temp_ein():
-    # Bett-Temperatur muss ebenfalls in den GCode einfliessen (M190 vor
-    # PRINT_START, damit das Bett vor dem Hauptablauf heiss ist).
-    g = generate(GeneratorParams(bed_temp=70))
-    assert "M190 S70" in g
-    assert "bed_temp=70" in g  # Header dokumentiert den Wert
-    # M190 erscheint vor PRINT_START (Standard-Reihenfolge):
+def test_generate_print_start_uebernimmt_temps():
+    # Klipper-Konvention: PRINT_START erhaelt EXTRUDER und BED als
+    # Parameter und uebernimmt das Heizen selbst (Bett-Pre-Heat waehrend
+    # Homing/QGL etc.) — wir emittieren KEIN eigenes M190/M109.
+    g = generate(GeneratorParams(temp=230, bed_temp=70))
+    assert "PRINT_START EXTRUDER=230 BED=70" in g
+    assert "M190" not in g
+    assert "M109" not in g
+    # Header dokumentiert beide Werte:
+    assert "temp=230" in g
+    assert "bed_temp=70" in g
+
+
+def test_generate_retract_um_jeden_travel():
+    # Vor jedem Travel ein Retract, danach ein De-Retract (Ellis-Stil
+    # gegen Sabbern auf langen Bewegungen zwischen Chevron-Gruppen).
+    g = generate(GeneratorParams(pa_start=0.0, pa_end=0.01, pa_step=0.005,
+                                 num_layers=1, retract_distance=0.5))
+    # Mindestens ein Retract und ein De-Retract:
+    assert "G1 E-0.5" in g
+    assert "G1 E0.5" in g
+    # Travels werden konsequent eingerahmt — bei mehreren Chevrons ist
+    # die Anzahl der Retracts > Anzahl der Pattern-Travels.
+    assert g.count("G1 E-0.5") >= 3  # mindestens Purge + Frame + Pattern
+
+
+def test_generate_retract_aus_wenn_distance_null():
+    g = generate(GeneratorParams(retract_distance=0.0))
+    assert "G1 E-" not in g  # kein Retract
+
+
+def test_generate_zieht_purge_linie():
+    # Vor dem Pattern wird eine Purge-Linie am linken Bettrand gezogen.
+    g = generate(GeneratorParams(bed_x=300.0, bed_y=300.0,
+                                 purge_x_margin=10.0, purge_length=80.0))
+    # Travel zur Purge-Start-Position (linker Rand, Bett-Y-Mitte):
+    assert "G1 X10 Y150" in g
+    # Extrudierende Purge-Bewegung 80 mm nach rechts:
+    assert "G1 X90 Y150" in g
+    # Purge laeuft vor dem Pattern, also vor dem ersten SET_PRESSURE_ADVANCE:
     zeilen = g.splitlines()
-    assert zeilen.index("M190 S70") < zeilen.index("PRINT_START")
+    purge_idx = next(i for i, z in enumerate(zeilen) if "G1 X90 Y150" in z)
+    pa_idx = next(i for i, z in enumerate(zeilen) if "SET_PRESSURE_ADVANCE" in z)
+    assert purge_idx < pa_idx
+
+
+def test_generate_zeigt_pa_im_display():
+    # M117 PA <wert> als Status-Anzeige je PA-Gruppe.
+    g = generate(GeneratorParams(pa_start=0.02, pa_end=0.025, pa_step=0.005,
+                                 num_layers=1))
+    assert "M117 PA 0.02" in g
+    assert "M117 PA 0.025" in g
+
+
+def test_generate_set_pressure_advance_mit_extruder_name():
+    # Optionaler EXTRUDER=-Parameter fuer Multi-Extruder-Setups.
+    g = generate(GeneratorParams(extruder_name="extruder1"))
+    assert "SET_PRESSURE_ADVANCE EXTRUDER=extruder1 ADVANCE=" in g
+
+
+def test_generate_set_pressure_advance_ohne_extruder_name_default():
+    g = generate(GeneratorParams())
+    assert "SET_PRESSURE_ADVANCE ADVANCE=" in g
+    assert "EXTRUDER=" not in g.split("SET_PRESSURE_ADVANCE")[1].split("\n")[0]
+
+
+def test_generate_luefter_layer1_und_normal():
+    # Layer-1 mit fan_speed_layer1, danach Umschaltung auf fan_speed.
+    g = generate(GeneratorParams(fan_speed_layer1=0.0, fan_speed=1.0,
+                                 num_layers=3))
+    # Kein M106 fuer Layer-1 (Wert 0.0 -> wird nicht emittiert):
+    # Aber nach Layer 1 muss M106 S255 erscheinen.
+    assert "M106 S255" in g  # fan_speed=1.0 -> 255
+
+
+def test_generate_luefter_layer1_aktiv():
+    # PETG/ABS-Szenario: Layer-1 mit reduziertem Luefter (z.B. 30 %).
+    g = generate(GeneratorParams(fan_speed_layer1=0.3, fan_speed=0.3))
+    assert "M106 S76" in g  # round(0.3 * 255) = 76
+
+
+def test_generate_endsequenz_cooldown():
+    # Vor PRINT_END wird das Hotend, Bett und der Luefter ausgeschaltet
+    # (Sicherheits-Netz; PRINT_END macht das ueblicherweise selbst).
+    g = generate(GeneratorParams())
+    zeilen = g.splitlines()
+    pe_idx = zeilen.index("PRINT_END")
+    cooldown = zeilen[max(0, pe_idx - 5):pe_idx]
+    assert "M104 S0" in cooldown
+    assert "M140 S0" in cooldown
+    assert "M107" in cooldown
+
+
+def test_generate_g92_e0_nach_m83():
+    # G92 E0 setzt den Extruder-Origin zurueck, direkt nach dem Modus-Setup.
+    g = generate(GeneratorParams())
+    zeilen = g.splitlines()
+    assert "G92 E0" in zeilen
+    assert zeilen.index("G92 E0") > zeilen.index("M83")
 
 
 def test_generate_eigener_start_end_gcode():

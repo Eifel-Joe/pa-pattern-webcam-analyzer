@@ -59,17 +59,16 @@ def test_run_ueber_lokalen_http_server(tmp_path, http_server, capsys):
 
 def test_generate_uebernimmt_filament_parameter(tmp_path):
     # Hotend-Temperatur, Bett-Temperatur und Extrusionsfaktor MUESSEN in
-    # den GCode einfliessen (Spec §5 Entscheidung 2: einbacken statt
-    # indirekt). Ohne diese Werte waere die generierte Datei filament-
-    # unabhaengig und damit falsch fuer den realen Druck.
+    # den GCode einfliessen. Klipper-Konvention: PRINT_START bekommt
+    # EXTRUDER/BED als Parameter und uebernimmt das Heizen.
     out = tmp_path / "pattern.gcode"
     rc = main(["generate", "-o", str(out),
                "--pa-start", "0.0", "--pa-end", "0.05", "--pa-step", "0.005",
                "--temp", "230", "--bed-temp", "70", "--flow", "1.05"])
     assert rc == 0
     text = out.read_text(encoding="utf-8")
-    assert "M109 S230" in text  # Hotend
-    assert "M190 S70" in text   # Bett
+    # PRINT_START traegt die Temperaturen:
+    assert "PRINT_START EXTRUDER=230 BED=70" in text
     # Header-Kommentar dokumentiert alle drei Werte:
     assert "temp=230" in text
     assert "bed_temp=70" in text

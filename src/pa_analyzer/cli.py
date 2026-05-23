@@ -56,11 +56,12 @@ def _cmd_generate(args: argparse.Namespace) -> int:
     params = GeneratorParams(
         pa_start=start, pa_end=end, pa_step=step,
         temp=args.temp, bed_temp=args.bed_temp,
-        extrusion_multiplier=args.flow)
+        extrusion_multiplier=args.flow, fan_speed=args.fan)
     _atomic_write(out_path, generate(params))
     print(f"GCode geschrieben: {out_path}  "
           f"(PA {start}..{end}, Schritt {step}, "
-          f"Hotend {args.temp}°C, Bett {args.bed_temp}°C, Flow {args.flow})")
+          f"Hotend {args.temp}°C, Bett {args.bed_temp}°C, "
+          f"Flow {args.flow}, Fan {args.fan})")
     return 0
 
 
@@ -102,6 +103,9 @@ def _build_parser() -> argparse.ArgumentParser:
     g.add_argument("--flow", type=float,
                    default=_DEFAULTS.extrusion_multiplier,
                    help="Extrusionsfaktor / Flow Ratio (Faktor um 1.0)")
+    g.add_argument("--fan", type=float, default=_DEFAULTS.fan_speed,
+                   help="Lüfter-PWM ab Layer 2 (0..1). Default 1.0 (PLA); "
+                        "PETG/ABS deutlich niedriger oder 0.")
     g.add_argument("--refine-from",
                    help="Report-JSON aus Lauf 1 für die Lauf-2-Grenzen")
     g.set_defaults(func=_cmd_generate)
