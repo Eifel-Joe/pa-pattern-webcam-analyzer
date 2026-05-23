@@ -1,5 +1,23 @@
 # PA-Pattern-Webcam-Analyzer
 
+> [!WARNING]
+> **Experimentell — frühe Entwicklungsphase.** Dieses Werkzeug steht
+> ganz am Anfang seiner Entwicklung. Die Bildverarbeitungs-Pipeline
+> wurde an Beispielfotos validiert, **aber der Live-Test am echten
+> Drucker steht noch aus** — die Klipper-Anbindung
+> (`klipper/pa_calibrate.cfg`) ist konventionsbasiert entworfen und in
+> der Praxis nicht verifiziert.
+>
+> Vor dem ersten Aufruf von `PA_CALIBRATE` unbedingt:
+> - Den Macro-Inhalt lesen und Pfade an die eigene Installation
+>   anpassen.
+> - Während des ersten Drucks bereit sein, den Drucker per Not-Aus
+>   anzuhalten.
+> - Die Konfidenz-Angabe des Analyzers ernst nehmen — niedrige
+>   Konfidenz heißt: dem Ergebnis nicht trauen.
+>
+> Nutzung auf eigene Gefahr.
+
 Automatische Pressure-Advance-Kalibrierung für Klipper-3D-Drucker.
 
 Das Werkzeug erzeugt ein Chevron-PA-Kalibrierungspattern als GCode,
