@@ -66,7 +66,13 @@ anpassen. Ohne diese Datei (genauer: ohne `start_gcode` darin) bricht
 Aufrufe sind nicht genormt, und der Generator muss exakt deinen Aufruf
 in den GCode einbauen.
 
+`install.sh` legt `pa_analyzer.example.conf` und `pa_calibrate.cfg`
+nach `~/printer_data/config/` (oder `~/klipper_config/`, je nach Setup)
+und fügt `[include pa_calibrate.cfg]` zur `printer.cfg` hinzu. Danach
+nur noch:
+
 ```bash
+cd ~/printer_data/config
 cp pa_analyzer.example.conf pa_analyzer.conf
 $EDITOR pa_analyzer.conf
 ```
@@ -127,11 +133,10 @@ start_gcode =
 
 ## Klipper-Einbindung
 
-`klipper/pa_calibrate.cfg` in die `printer.cfg` aufnehmen:
-
-```
-[include pa_calibrate.cfg]
-```
+`install.sh` legt die Macro-Datei nach `~/printer_data/config/`
+(Standard-Klipper-Verzeichnis) und ergänzt `[include pa_calibrate.cfg]`
+in der `printer.cfg`. Nach einem Klipper-Restart ist `PA_CALIBRATE` als
+Befehl verfügbar.
 
 Danach in der Klipper-Konsole — `TEMP` (Hotend), `BED_TEMP` (Bett),
 `FLOW` (Extrusionsfaktor) und `FAN` (Lüfter ab Layer 2, 0..1) an das
