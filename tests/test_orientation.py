@@ -48,6 +48,12 @@ def test_orientation_funktioniert_mit_generator_output_synthetisch():
 
     gcode = generate(GeneratorParams())
     model = parse(gcode)
+    # Sanity-Guards — bei kaputtem Generator (z.B. leerer GCode) wären
+    # diese None, und der Test würde mit unklarem TypeError crashen.
+    assert model.content_bounds is not None, (
+        "parse() lieferte kein content_bounds — Generator fehlerhaft?")
+    assert model.frame_box is not None, (
+        "parse() lieferte keine frame_box — Generator fehlerhaft?")
 
     # Synthetisches Bild rendern: 800x600, Pattern-Bewegungen als
     # weiße Pixel auf schwarzem Hintergrund. Skalierung so, dass
