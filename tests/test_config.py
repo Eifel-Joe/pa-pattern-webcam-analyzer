@@ -120,3 +120,54 @@ def test_load_config_prozent_zeichen_im_macro_bleibt_erhalten(tmp_path):
         encoding="utf-8")
     cfg = load_config(p)
     assert cfg.start_gcode == "PRINT_START EXTRA=50%%"
+
+
+def test_load_config_parst_generator_sektion(tmp_path):
+    cfg_path = tmp_path / "test.conf"
+    cfg_path.write_text(
+        "[macros]\n"
+        "start_gcode = PRINT_START\n"
+        "[generator]\n"
+        "speed_print = 180\n"
+        "accel = 3000\n",
+        encoding="utf-8")
+    cfg = load_config(cfg_path)
+    assert cfg.speed_print == 180.0
+    assert cfg.accel == 3000.0
+
+
+def test_load_config_generator_sektion_optional(tmp_path):
+    cfg_path = tmp_path / "test.conf"
+    cfg_path.write_text(
+        "[macros]\n"
+        "start_gcode = PRINT_START\n",
+        encoding="utf-8")
+    cfg = load_config(cfg_path)
+    assert cfg.speed_print is None
+    assert cfg.accel is None
+
+
+def test_load_config_generator_kaputte_zahl_wirft_value_error(tmp_path):
+    cfg_path = tmp_path / "test.conf"
+    cfg_path.write_text(
+        "[macros]\n"
+        "start_gcode = PRINT_START\n"
+        "[generator]\n"
+        "speed_print = nicht-eine-zahl\n",
+        encoding="utf-8")
+    with pytest.raises(ValueError):
+        load_config(cfg_path)
+
+
+def test_load_config_generator_teilweise(tmp_path):
+    # speed_print gesetzt, accel weggelassen
+    cfg_path = tmp_path / "test.conf"
+    cfg_path.write_text(
+        "[macros]\n"
+        "start_gcode = PRINT_START\n"
+        "[generator]\n"
+        "speed_print = 150\n",
+        encoding="utf-8")
+    cfg = load_config(cfg_path)
+    assert cfg.speed_print == 150.0
+    assert cfg.accel is None
