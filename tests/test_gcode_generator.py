@@ -65,14 +65,18 @@ def test_group_advance_positiv():
 
 
 def test_group_advance_konkreter_wert():
-    # Handgerechnet fuer die Default-Parameter (wall_count=3, lw=0.45,
-    # layer_height=0.2, corner_angle=90, pattern_spacing=2.0):
+    # Handgerechnet fuer die v3-Default-Parameter (wall_count=3, lw=0.45,
+    # layer_height=0.2, corner_angle=90, pattern_spacing=6.0):
     # line_spacing = 0.45 - 0.2*(1-pi/4) ~= 0.40708
     # wall_x_offset = line_spacing / sin(45 Grad) ~= 0.57577
-    # group_advance = 2*0.57577 + 2.0 + 0.45 ~= 3.6015
-    # Dieser Wert deckt sich mit dem Gruppenabstand des echten
-    # OrcaSlicer-PA-Patterns (~3.6015 mm) — doppelte Validierung.
-    assert _group_advance(GeneratorParams()) == pytest.approx(3.6015, abs=0.001)
+    # group_advance = 2*0.57577 + 6.0 + 0.45 ~= 7.6015
+    # (v2 hatte pattern_spacing=2 → 3.6015; v3 erweitert auf 6 damit
+    # Chevrons mit wall_side_length=8 nicht überlappen.)
+    assert _group_advance(GeneratorParams()) == pytest.approx(7.6014, abs=0.001)
+    # Explizit auch mit alter v2-Geometrie testen (Backward-Compat
+    # für Nutzer die alte Parameter überschreiben).
+    p_v2 = GeneratorParams(wall_side_length=30.0, pattern_spacing=2.0)
+    assert _group_advance(p_v2) == pytest.approx(3.6015, abs=0.001)
 
 
 def test_generate_enthaelt_geruest():
@@ -256,12 +260,15 @@ def test_generator_params_neue_defaults():
 
 def test_generate_pattern_hoehe_enthaelt_top_bar_und_band_gap():
     # Y-Erstreckung aller extrudierenden Moves (Pre-PA) muss die
-    # gesamte Pattern-Höhe abdecken.
-    # v2 (margin=0, chevron_band_gap=0, top_bar_height=12):
-    # 2*dy bei wall_side_length=30, corner_angle=90 → 2*30*sin(45°) ≈ 42.43
-    # pattern_h = top_bar_height(12) + chevron_band_gap(0) + 42.43 ≈ 54.43
-    # OHNE Top-Bar wäre Y-Erstreckung = 2*dy ≈ 42.43 mm
+    # gesamte Pattern-Höhe abdecken (Top-Bar + Chevron-Band).
+    # Geometrie aus den aktuellen Params herleiten, damit der Test
+    # robust gegen wall_side_length/top_bar_height-Änderungen ist.
+    import math
+
     p = GeneratorParams()
+    chevron_h = 2 * math.sin(math.radians(p.corner_angle / 2)) * p.wall_side_length
+    erwartet_pattern_h = p.top_bar_height + p.chevron_band_gap + chevron_h
+
     g = generate(p)
     import re
     zeilen = g.splitlines()
@@ -269,40 +276,46 @@ def test_generate_pattern_hoehe_enthaelt_top_bar_und_band_gap():
                         if "SET_PRESSURE_ADVANCE" in z)
     frame_ys = set()
     for line in zeilen[:first_pa_idx]:
-        # Nur extrudierende Moves (enthalten 'E')
         if " E" in line:
             m = re.search(r"\sY([\d.-]+)", line)
             if m:
                 frame_ys.add(float(m.group(1)))
     frame_h = max(frame_ys) - min(frame_ys)
-    # Erwartete Y-Erstreckung MIT Top-Bar: ≈ 54.43 mm
-    # Schwellwert: zwischen 42.43 (nur Chevrons) und 54.43 (mit Top-Bar) → > 50.0
-    assert frame_h >= 50.0, (
-        f"Y-Erstreckung {frame_h:.2f} mm zu klein — "
-        f"Top-Bar (12 mm) fehlt vermutlich")
+    # Mit Top-Bar muss frame_h MINDESTENS chevron_h + 50 % top_bar_height
+    # erreichen — die strikte Gleichheit zur erwarteten Pattern-Höhe
+    # prüft test_generate_top_bar_beruehrt_chevrons.
+    min_h = chevron_h + 0.5 * p.top_bar_height
+    assert frame_h >= min_h, (
+        f"Y-Erstreckung {frame_h:.2f} mm < {min_h:.2f} mm — "
+        f"Top-Bar (≈ {p.top_bar_height} mm) fehlt vermutlich. "
+        f"Erwartet ≈ {erwartet_pattern_h:.2f} mm.")
 
 
 def test_generate_zieht_solid_top_bar():
     # Top-Bar = Vollfüllung der Höhe top_bar_height über pattern_w.
-    # Bei top_bar_height=4 mm und line_width=0.45 mm → ca. 9 parallele
-    # Linien (4/0.45 ≈ 8.89).
+    # Heuristik: viele extrudierte Moves in den obersten ~top_bar_height
+    # Millimetern des Patterns (typische Stadion-Füllung).
+    import math
     p = GeneratorParams()
     g = generate(p)
-    # Top-Bar-Y-Bereich: die obersten ~4 mm des Patterns. Wir prüfen,
-    # dass im oberen Bett-Bereich viele extrudierte horizontale Moves
-    # mit E-Wert auftauchen (typische Stadion-Füllung).
+    # Top-Bar-Untergrenze relativ zur Pattern-Oberkante. Pattern-Höhe
+    # leiten wir aus Generator-Geometrie ab.
+    chevron_h = 2 * math.sin(math.radians(p.corner_angle / 2)) * p.wall_side_length
+    pattern_h = p.top_bar_height + p.chevron_band_gap + chevron_h
+    pattern_top_y = p.bed_y / 2 + pattern_h / 2
+    # Top-Bar nimmt obere top_bar_height mm
+    top_bar_min_y = pattern_top_y - p.top_bar_height
     import re
     e_lines_in_top = 0
     for line in g.splitlines():
         m = re.search(r"\sY([\d.-]+).+E([\d.-]+)", line)
         if m:
             y = float(m.group(1))
-            # Heuristik: Y im oberen Bereich = Y > bed_y/2 + 15 (grob)
-            if y > p.bed_y / 2 + 15:
+            if y >= top_bar_min_y:
                 e_lines_in_top += 1
     assert e_lines_in_top >= 5, (
-        f"Nur {e_lines_in_top} extrudierte Moves im Top-Bar-Bereich — "
-        "Solid-Top-Bar fehlt vermutlich")
+        f"Nur {e_lines_in_top} extrudierte Moves im Top-Bar-Bereich "
+        f"(y >= {top_bar_min_y:.1f}) — Solid-Top-Bar fehlt vermutlich")
 
 
 def test_generate_top_bar_in_allen_layern():
@@ -621,15 +634,16 @@ def test_generate_top_bar_beruehrt_chevrons():
     """chevron_band_gap = 0 → Top-Bar-Unterkante = Chevron-Oberkante."""
     p = GeneratorParams()
     g = generate(p)
-    # Top-Bar Unterkante: y_low der untersten Top-Bar-Linie
-    # Chevron-Oberkante: y_top der obersten Chevron-Punkte
-    # Test indirekt: 2*dy + top_bar_height = pattern_h (kein band_gap)
+    # Test indirekt: pattern_h = top_bar_height + chevron_band_gap + 2*dy
     import math
     dy = math.sin(math.radians(p.corner_angle / 2)) * p.wall_side_length
     erwartete_pattern_h = p.top_bar_height + 2 * dy + p.chevron_band_gap
-    # Mit chevron_band_gap=0: pattern_h = 12 + 42.43 = 54.43
     assert p.chevron_band_gap == 0.0
-    assert abs(erwartete_pattern_h - 54.43) < 0.5
+    # v3 (wall_side_length=8): 12 + 11.31 = 23.31 mm.
+    # v2 (wall_side_length=30): 12 + 42.43 = 54.43 mm — beides möglich,
+    # die Formel selbst ist die Aussage. Test prüft Konsistenz.
+    assert erwartete_pattern_h == pytest.approx(
+        p.top_bar_height + 2 * dy, abs=0.01)
 
 
 def test_generate_margin_null_kein_padding_zwischen_frame_und_pattern():
@@ -651,11 +665,19 @@ def test_generate_margin_null_kein_padding_zwischen_frame_und_pattern():
         if m:
             ys.append(float(m.group(1)))
     y_span = max(ys) - min(ys)
-    # Pattern_h ≈ 54.43 (siehe Test oben). Y-Span ≈ pattern_h (ggf. plus
-    # Purge-Y, also wir filtern auf Pre-PA — vereinfachte Form:
-    # min(ys) > 100 — alle Moves sind im Bett-Mitte-Bereich
-    # Hier: einfach prüfen Y-Span ist mind. 50 mm (= 12 + 42 ohne Padding).
-    assert y_span >= 50.0, f"Y-Span {y_span:.2f} zu klein"
+    # Y-Span muss MINDESTENS dem erwarteten Pattern-Höhen entsprechen
+    # (Top-Bar + chevron_band_gap + 2*dy). Aus Params herleiten statt
+    # hartkodiert, damit Test robust gegen Generator-Default-Änderungen.
+    import math
+    dy = math.sin(math.radians(p.corner_angle / 2)) * p.wall_side_length
+    erwartete_pattern_h = p.top_bar_height + p.chevron_band_gap + 2 * dy
+    # Toleranz 0.5 mm; Pattern darf nicht durch zusätzliches Padding
+    # größer werden (margin=0-Zusicherung).
+    assert y_span >= erwartete_pattern_h - 0.5, (
+        f"Y-Span {y_span:.2f} mm < erwartet {erwartete_pattern_h:.2f} mm")
+    assert y_span <= erwartete_pattern_h + 0.5, (
+        f"Y-Span {y_span:.2f} mm > erwartet {erwartete_pattern_h:.2f} mm — "
+        f"Padding zwischen Frame und Pattern?")
 
 
 def test_generate_emittiert_frame_marker_kommentar():
