@@ -291,8 +291,17 @@ def parse(gcode_text: str) -> PatternModel:
     frame_box = (_find_frame_box_from_marker(gcode_text)
                  or _find_frame_box(gcode_text))
     content_bounds = _content_bounds(gcode_text)
+    # Max-Y aller Apexe = obere Grenze des Chevron-Bandes. Wird von
+    # orientation.py als band-Grenze genutzt — robust gegen die
+    # Diskrepanz zwischen Marker-by1 (theoretisch) und tatsächlich
+    # extrudierter Top-Bar-Linie (siehe Pipeline-Diagnose 2026-05-24).
+    chevron_band_top: float | None = None
+    if groups:
+        chevron_band_top = max(
+            c.apex.y for g in groups for c in g.chevrons)
     return PatternModel(
         groups=tuple(groups),
         frame_box=frame_box,
         content_bounds=content_bounds,
+        chevron_band_top=chevron_band_top,
     )

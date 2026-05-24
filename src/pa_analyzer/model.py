@@ -56,11 +56,19 @@ class FrameBox:
 @dataclass(frozen=True)
 class PatternModel:
     """Geparstes PA-Pattern: alle PA-Gruppen, die Rahmen-Box und die
-    Bounding-Box der gesamten Druck-Geometrie."""
+    Bounding-Box der gesamten Druck-Geometrie.
+
+    `chevron_band_top` ist die obere Y-Grenze der Chevron-Apexe (= unterer
+    Rand der Top-Bar in v2-Geometrie). Wird von `orientation.py` als
+    band-Berechnungs-Grenze genutzt, weil `frame_box.max_y` bei v2 die
+    THEORETISCHE Frame-Outline meint (Marker `by1`) und nicht die echte
+    extrudierte Pattern-Grenze — was zu negativem `band` führen würde.
+    """
 
     groups: tuple[PaGroup, ...]
     frame_box: FrameBox | None = None
     content_bounds: tuple[Point, Point] | None = None
+    chevron_band_top: float | None = None
 
 
 @dataclass(frozen=True)
