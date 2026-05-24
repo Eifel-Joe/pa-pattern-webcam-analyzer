@@ -458,32 +458,68 @@ def test_generate_beschriftet_jeden_chevron_mit_pa_wert():
 
 
 def test_generate_labels_nur_in_oberster_layer():
-    # Bei num_layers=3 zählen wir G1-Move-Anzahl pro Layer.
-    # Layer 1 + 2 sollten gleich viele haben (nur Top-Bar + Anker +
-    # Chevrons). Layer 3 (oberste) hat zusätzlich Labels → deutlich mehr.
+    # Schärfer Test (ersetzt defekte Version vom 2026-05-24):
+    # Der alte Test nutzte Z-Hub-Move-Indizes als Layer-Trenner und
+    # verglich chunk[2] (= Layer 1, ohne Labels) mit chunk[0] (= 12-zeiligem
+    # Pre-Loop-Artifact). Damit wäre die Assertion auch bei "Labels in jeder
+    # Layer" TRUE geblieben — kein Schutz gegen Regressions.
+    #
+    # Korrekte Strategie: Layer-Grenzen per Z-Wert (nicht per Z-Marken-Index).
+    # num_layers=3, layer_height=0.2 → Layer-Z-Werte: 0.2, 0.4, 0.6.
+    # "G1 Z0.6 F..." ist der Einstieg in die oberste Layer.
+    # "G1 Z0.4 F..." ist der Einstieg in die vorletzte Layer (keine Labels).
+    # Beide ohne E-Parameter (kein Extrusions-Move).
+    #
+    # Assertions:
+    # A) Vorletzte Layer hat DEUTLICH WENIGER G1-Moves als oberste Layer
+    #    (Differenz ≥ 100; je 17 Labels × ~19 G1 ≈ 323 Moves).
+    # B) Die zwei label-freien Lagen (Z=0.4 und Z=0.2-Block ab Layer-Loop)
+    #    haben ANNÄHERND GLEICH VIELE Moves (Differenz < 50) — belegt, dass
+    #    Labels wirklich nur einmal (oberste Layer) hinzukommen.
+    #
+    # Wenn Labels in jeder Layer lägen: vorletzte und oberste hätten gleich
+    # viele Moves → Assertion A würde FEHLSCHLAGEN. ✓
+    import re
     p = GeneratorParams(num_layers=3)
     g = generate(p)
-    import re
     lines = g.splitlines()
-    # Z-Hub-Moves zwischen Layern: F-Wert vorhanden, kein E
-    z_marks = []
-    for i, l in enumerate(lines):
-        m = re.match(r"^G1 Z([\d.-]+) F", l)
-        if m and " E" not in l:
-            z_marks.append((i, float(m.group(1))))
-    # z_marks = Liste der (index, z)-Tupel für die Z-Hub-Moves
-    # (mindestens 3 bei num_layers=3, evtl. plus End-Z-Raise)
-    assert len(z_marks) >= 3, (
-        f"Erwartet mindestens 3 Z-Hub-Moves, got: {len(z_marks)}")
-    layer_chunks = []
-    # Nimm nur die ersten 3 (die End-Z-Raise wäre die 4. wenn vorhanden)
-    for k in range(3):
-        start = z_marks[k][0]
-        end = z_marks[k+1][0] if k+1 < len(z_marks) else len(lines)
-        layer_chunks.append([l for l in lines[start:end]
-                              if l.startswith("G1")])
-    # layer_chunks[0] = Layer 1, [1] = Layer 2, [2] = Layer 3 (mit Labels)
-    assert len(layer_chunks[2]) > len(layer_chunks[0]) + 50, (
-        f"Oberste Layer ({len(layer_chunks[2])} G1) nicht deutlich "
-        f"größer als Layer 1 ({len(layer_chunks[0])} G1) — Labels "
-        "stehen wohl in jeder Layer (sollen aber nur in oberster).")
+
+    lh = p.layer_height  # 0.2 mm
+
+    def _first_line_of_z(target_z: float) -> int:
+        """Index der ersten Zeile 'G1 Z<target_z> F...' (ohne E)."""
+        target = f"G1 Z{round(target_z, 4):g} F"
+        for i, l in enumerate(lines):
+            if l.startswith(target) and " E" not in l:
+                return i
+        raise AssertionError(f"Keine G1-Z-Linie für Z={target_z} gefunden")
+
+    # Positionen der drei Layer-Übergänge
+    z_layer0 = _first_line_of_z(lh)          # G1 Z0.2 — Layer 0
+    z_layer1 = _first_line_of_z(2 * lh)      # G1 Z0.4 — Layer 1 (kein Label)
+    z_layer2 = _first_line_of_z(3 * lh)      # G1 Z0.6 — Layer 2 (mit Labels)
+    # End-Z-Raise liegt hinter dem letzten Layer
+    z_end = _first_line_of_z(3 * lh + p.z_raise_end)
+
+    def _g1_count(start: int, end: int) -> int:
+        return sum(1 for l in lines[start:end] if l.startswith("G1"))
+
+    moves_layer1 = _g1_count(z_layer1, z_layer2)   # ohne Labels
+    moves_layer2 = _g1_count(z_layer2, z_end)       # mit Labels
+
+    # A) Oberste Layer (mit Labels) hat deutlich mehr Moves als vorletzte
+    assert moves_layer2 > moves_layer1 + 100, (
+        f"Oberste Layer ({moves_layer2} G1) nicht deutlich größer als "
+        f"vorletzte Layer ({moves_layer1} G1) — Labels fehlen oder stehen "
+        "in jeder Layer (sollen nur in oberster sein).")
+
+    # B) Zwei label-freie Layer (Layer 0-Block und Layer 1) sind annähernd
+    #    gleich groß — beweist, dass Differenz aus Labels stammt, nicht
+    #    aus anderem layerspezifischem Code.
+    moves_layer0_block = _g1_count(z_layer0, z_layer1)
+    # Layer-0-Block enthält Rahmen + Purge → erlaubter Overhead bis 30 Moves
+    assert abs(moves_layer0_block - moves_layer1) < 30, (
+        f"Layer-0-Block ({moves_layer0_block} G1) und Layer 1 "
+        f"({moves_layer1} G1) weichen um "
+        f"{abs(moves_layer0_block - moves_layer1)} ab — "
+        "Rahmen/Purge-Overhead sollte < 30 betragen.")
