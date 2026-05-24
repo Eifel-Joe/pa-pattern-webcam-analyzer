@@ -285,6 +285,53 @@ def _pa_labels_block(
     return out
 
 
+def _header_labels_block(
+    p: GeneratorParams, x_start: float, y_top: float,
+) -> list[str]:
+    """Speed/Accel-Header: 2 hochkant rotierte Spalten links der PA-Labels.
+
+    Spalte 1 zeigt speed_print (immer), Spalte 2 zeigt accel (nur wenn > 0).
+    Die Glyph-Höhe ist etwas größer als bei PA-Labels (header_glyph_height
+    vs. label_glyph_height), um einen visuellen Header-Effekt zu erzeugen.
+    Bei accel=0 entfällt die Accel-Spalte — "0" als Beschleunigung wäre
+    irreführend (kein Velocity-Limit gesetzt).
+    """
+    out: list[str] = []
+    # Spalte 1: Speed (immer vorhanden)
+    out.extend(render_label_gcode(
+        text=_fmt(p.speed_print),
+        x=x_start, y=y_top,
+        glyph_height=p.header_glyph_height,
+        glyph_width=p.header_glyph_width,
+        glyph_gap=p.label_glyph_gap,
+        line_width=_line_width(p),
+        layer_height=p.layer_height,
+        filament_diameter=p.filament_diameter,
+        extrusion_multiplier=p.extrusion_multiplier,
+        print_speed=p.speed_print,
+        travel_speed=p.speed_travel,
+        rotation=90,
+    ))
+    # Spalte 2: Accel (nur wenn > 0 — "0" wäre irreführend)
+    if p.accel > 0:
+        x_col2 = x_start + p.header_glyph_height + p.header_column_spacing
+        out.extend(render_label_gcode(
+            text=_fmt(p.accel),
+            x=x_col2, y=y_top,
+            glyph_height=p.header_glyph_height,
+            glyph_width=p.header_glyph_width,
+            glyph_gap=p.label_glyph_gap,
+            line_width=_line_width(p),
+            layer_height=p.layer_height,
+            filament_diameter=p.filament_diameter,
+            extrusion_multiplier=p.extrusion_multiplier,
+            print_speed=p.speed_print,
+            travel_speed=p.speed_travel,
+            rotation=90,
+        ))
+    return out
+
+
 def generate(params: GeneratorParams) -> str:
     """Erzeugt den vollständigen PA-Pattern-GCode als String."""
     p = params
@@ -433,8 +480,24 @@ def generate(params: GeneratorParams) -> str:
             # Label-Y-Top = obere Top-Bar-Innenkante (oben in der Bar,
             # Labels laufen nach unten in die Bar hinein).
             label_y_top = top_bar_y_high - 0.5  # 0.5 mm Padding zum oberen Rand
+            # Speed/Accel-Header VOR den PA-Labels (ganz links auf der Top-Bar).
+            # 0.5 mm Padding zur Frame-Innenkante (bx0 + margin).
+            header_x_start = bx0 + margin + 0.5
+            out.extend(_header_labels_block(
+                p, header_x_start, label_y_top,
+            ))
+            # PA-Labels beginnen nach den Header-Spalten + Trenn-Lücke.
+            # 2 Header-Spalten × header_glyph_height + header_column_spacing
+            # + header_to_labels_gap. Dadurch verschieben sich die PA-Labels
+            # nach rechts — sie stehen nicht mehr exakt über den Chevrons,
+            # sondern um pa_labels_x_offset nach rechts versetzt (gewollt:
+            # der Header braucht Platz links).
+            pa_labels_x_offset = (
+                2 * p.header_glyph_height + p.header_column_spacing
+                + p.header_to_labels_gap
+            )
             out.extend(_pa_labels_block(
-                p, pa_values, px0, label_y_top, adv,
+                p, pa_values, px0 + pa_labels_x_offset, label_y_top, adv,
             ))
 
     # End-Sequenz: Retract, Z-Raise, optionaler Cooldown (Sicherheits-

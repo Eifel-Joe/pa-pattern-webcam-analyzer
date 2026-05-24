@@ -523,3 +523,38 @@ def test_generate_labels_nur_in_oberster_layer():
         f"({moves_layer1} G1) weichen um "
         f"{abs(moves_layer0_block - moves_layer1)} ab — "
         "Rahmen/Purge-Overhead sollte < 30 betragen.")
+
+
+def test_generate_beschriftet_speed_accel_header():
+    # Speed/Accel-Header in oberster Layer: 2 Spalten ("100", "2000")
+    # mit größerer Glyph-Höhe als die PA-Labels.
+    p = GeneratorParams(num_layers=1, accel=2000.0, speed_print=100.0)
+    g = generate(p)
+    # Indirekter Test: zähle G1-Moves im einzigen Layer; Header fügt
+    # 3 Glyphen ("1", "0", "0") + 4 Glyphen ("2", "0", "0", "0") =
+    # 7 Glyphen extra hinzu (jede Glyph = mindestens 2 Moves:
+    # Travel + Extrusion).
+    g1_lines = [l for l in g.splitlines() if l.startswith("G1")]
+    # Nach T9 (PA-Labels) hat 1-Layer-Output ~614 G1-Moves.
+    # Mit Header zusätzlich ~7 Glyphen × ~7 Moves = ~49 Extra → ~663.
+    # Schwelle 640 liegt klar zwischen "ohne Header" (614) und
+    # "mit Header" (≥663). Locker gesetzt für Glyph-Variationen.
+    assert len(g1_lines) > 640, (
+        f"Nur {len(g1_lines)} G1-Moves — Speed/Accel-Header fehlt?")
+
+
+def test_generate_kein_accel_kein_header_label():
+    # Bei accel=0 wird auch kein Accel-Header-Label gerendert
+    # (sonst stünde "0" als Accel im Header — irreführend).
+    # Speed-Label bleibt aber (speed_print ist immer > 0).
+    p_mit_accel = GeneratorParams(num_layers=1, accel=2000.0)
+    p_ohne_accel = GeneratorParams(num_layers=1, accel=0.0)
+    g_mit = generate(p_mit_accel)
+    g_ohne = generate(p_ohne_accel)
+    g1_mit = sum(1 for l in g_mit.splitlines() if l.startswith("G1"))
+    g1_ohne = sum(1 for l in g_ohne.splitlines() if l.startswith("G1"))
+    # Differenz: 4 Glyphen ("2000") × 2-6 Moves = mindestens 8 Moves weniger.
+    assert g1_mit > g1_ohne + 8, (
+        f"Mit-Accel-Output ({g1_mit}) sollte ~10-30 Moves mehr haben "
+        f"als Ohne-Accel ({g1_ohne}) — Accel-Header wird nicht "
+        "konditional emittiert")
