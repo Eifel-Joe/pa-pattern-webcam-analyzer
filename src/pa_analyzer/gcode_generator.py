@@ -65,6 +65,9 @@ class GeneratorParams:
     label_glyph_height: float = 2.5     # mm PA-Label-Glyph (v2: 0.7 → 2.5)
     label_glyph_width: float = 1.5      # mm (v2: 0.5 → 1.5)
     label_glyph_gap: float = 0.2        # mm zwischen Glyphen
+    label_stride: int = 2               # nur jeden N-ten PA-Wert beschriften
+                                        # (v2.1: 1 → 2; Zwischenwerte ergeben
+                                        # sich kontextual, mehr Platz pro Label)
     header_glyph_height: float = 4.0    # mm Speed/Accel-Header (v2: 1.0 → 4.0)
     header_glyph_width: float = 2.5     # mm (v2: 0.7 → 2.5)
     header_column_spacing: float = 4.0  # mm zwischen Speed- und Accel-Spalte
@@ -258,6 +261,11 @@ def _pa_labels_block(
     """
     out: list[str] = []
     for j, pa in enumerate(pa_values):
+        # Nur jeden label_stride-ten PA-Wert beschriften (Default 2).
+        # Zwischenwerte ergeben sich kontextual aus den beschrifteten
+        # Nachbarn — spart Platz und macht jedes Label deutlich lesbarer.
+        if j % p.label_stride != 0:
+            continue
         # X-Mitte der Chevron-Gruppe j.
         gx_center = px0 + j * group_advance + (
             (p.wall_count - 1) * _wall_x_offset(p) + _chevron_deltas(p)[0]

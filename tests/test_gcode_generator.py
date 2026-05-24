@@ -240,6 +240,7 @@ def test_generator_params_neue_defaults():
     assert p.label_glyph_height == 2.5       # v2: 0.7 → 2.5
     assert p.label_glyph_width == 1.5        # v2: 0.5 → 1.5
     assert p.label_glyph_gap == 0.2
+    assert p.label_stride == 2               # v2.1: nur jedes zweite Label
     assert p.header_glyph_height == 4.0      # v2: 1.0 → 4.0
     assert p.header_glyph_width == 2.5       # v2: 0.7 → 2.5
     assert p.header_column_spacing == 4.0
@@ -518,21 +519,22 @@ def test_generate_labels_nur_in_oberster_layer():
 
 
 def test_generate_beschriftet_speed_accel_header():
-    # Speed/Accel-Header in oberster Layer: 2 Spalten ("100", "2000")
-    # mit größerer Glyph-Höhe als die PA-Labels.
-    p = GeneratorParams(num_layers=1, accel=2000.0, speed_print=100.0)
-    g = generate(p)
-    # Indirekter Test: zähle G1-Moves im einzigen Layer; Header fügt
-    # 3 Glyphen ("1", "0", "0") + 4 Glyphen ("2", "0", "0", "0") =
-    # 7 Glyphen extra hinzu (jede Glyph = mindestens 2 Moves:
-    # Travel + Extrusion).
-    g1_lines = [l for l in g.splitlines() if l.startswith("G1")]
-    # Nach T9 (PA-Labels) hat 1-Layer-Output ~614 G1-Moves.
-    # Mit Header zusätzlich ~7 Glyphen × ~7 Moves = ~49 Extra → ~663.
-    # Schwelle 640 liegt klar zwischen "ohne Header" (614) und
-    # "mit Header" (≥663). Locker gesetzt für Glyph-Variationen.
-    assert len(g1_lines) > 640, (
-        f"Nur {len(g1_lines)} G1-Moves — Speed/Accel-Header fehlt?")
+    # Vergleichs-Test: Mit Header (accel > 0) muss der Output
+    # spürbar mehr G1-Moves haben als ohne (accel = 0). Robuster als
+    # absolute Schwellen, weil Total-Counts sich mit Geometrie-Änderungen
+    # (label_stride, wall_count etc.) ändern.
+    g1_mit = sum(
+        1 for l in generate(
+            GeneratorParams(num_layers=1, accel=2000.0, speed_print=100.0)
+        ).splitlines() if l.startswith("G1"))
+    g1_ohne = sum(
+        1 for l in generate(
+            GeneratorParams(num_layers=1, accel=0.0, speed_print=100.0)
+        ).splitlines() if l.startswith("G1"))
+    # Accel-Header "2000" = 4 Glyphen × min 4 Moves = >= 16 Extra-Moves
+    assert g1_mit > g1_ohne + 15, (
+        f"Mit-Header ({g1_mit}) sollte deutlich > ohne-Header ({g1_ohne}) "
+        f"+ 15 sein — Accel-Header wird vermutlich nicht emittiert")
 
 
 def test_generate_kein_accel_kein_header_label():
@@ -674,3 +676,36 @@ def test_generate_emittiert_frame_marker_kommentar():
         f"Frame nicht bett-zentriert (X-Mitte {cx:.2f})")
     assert abs(cy - 150.0) < 1.0, (
         f"Frame nicht bett-zentriert (Y-Mitte {cy:.2f})")
+
+
+def test_generate_label_stride_zwei_emittiert_jedes_zweite_label():
+    """label_stride=2 (default): bei 17 PA-Werten werden 9 Labels
+    gedruckt (Indices 0, 2, 4, ..., 16). Die Zwischen-Indizes
+    ergeben sich kontextual aus den Nachbarn."""
+    p_stride2 = GeneratorParams(label_stride=2)
+    p_stride1 = GeneratorParams(label_stride=1)
+    g_stride2 = generate(p_stride2)
+    g_stride1 = generate(p_stride1)
+    g1_stride2 = sum(
+        1 for l in g_stride2.splitlines() if l.startswith("G1"))
+    g1_stride1 = sum(
+        1 for l in g_stride1.splitlines() if l.startswith("G1"))
+    # stride=2 muss DEUTLICH weniger G1-Moves haben — etwa die Hälfte
+    # der PA-Label-Moves entfallen. Bei 17 → 9 Labels statt 17 → ~50%
+    # weniger Label-Stroke-Moves.
+    assert g1_stride1 > g1_stride2 + 50, (
+        f"stride=1 ({g1_stride1}) sollte deutlich mehr Moves haben als "
+        f"stride=2 ({g1_stride2}) — label_stride wirkt nicht.")
+
+
+def test_generate_label_stride_eins_emittiert_alle_labels():
+    """label_stride=1: jeder PA-Wert bekommt ein Label (alte v2-Variante,
+    nur für Vergleich/Override-Fall)."""
+    # Ein parametrisiert spezifischer Smoke-Test: bei stride=1 müssen
+    # die Indices 0..n_pa-1 alle in der Label-Schleife landen.
+    p = GeneratorParams(label_stride=1)
+    g = generate(p)
+    # Indirekt: G1-Count ist höher als bei stride=2 (siehe Test oben).
+    # Hier nur prüfen: kein Crash und plausible Ausgabe.
+    assert "G1" in g
+    assert "SET_PRESSURE_ADVANCE" in g
