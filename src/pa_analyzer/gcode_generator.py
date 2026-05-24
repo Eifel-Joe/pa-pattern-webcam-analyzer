@@ -210,6 +210,40 @@ def _top_bar_block(
     return out
 
 
+def _anchor_marker_block(
+    p: GeneratorParams, x_left: float, y_center: float,
+    travel_to_fn, print_f: int,
+) -> list[str]:
+    """Gefülltes Rechteck links neben dem Pattern (Asymmetrie-Anker).
+
+    x_left = linke Außenkante des Rechtecks (Frame-Innenkante = bx0+margin).
+    y_center = vertikale Mitte des Rechtecks (Chevron-Reihenmitte = py0+dy).
+
+    Der Marker besteht aus n_lines vertikalen Linien im Abstand line_width,
+    abwechselnd nach oben / nach unten gezeichnet (Boustrophedon). Jede Linie
+    hat die Länge anchor_marker_height.
+    """
+    lw = _line_width(p)
+    y_low = y_center - p.anchor_marker_height / 2
+    y_high = y_center + p.anchor_marker_height / 2
+    e_v = _extrusion(p.anchor_marker_height, lw, p.layer_height,
+                     p.filament_diameter, p.extrusion_multiplier)
+    out: list[str] = []
+    n_lines = max(1, int(round(p.anchor_marker_width / lw)))
+    out.extend(travel_to_fn(x_left, y_low))
+    nach_oben = True
+    for i in range(n_lines):
+        x = x_left + i * lw
+        if nach_oben:
+            out.append(f"G1 X{_fmt(x)} Y{_fmt(y_high)} "
+                       f"E{_fmt_e(e_v)} F{print_f}")
+        else:
+            out.append(f"G1 X{_fmt(x)} Y{_fmt(y_low)} "
+                       f"E{_fmt_e(e_v)} F{print_f}")
+        nach_oben = not nach_oben
+    return out
+
+
 def generate(params: GeneratorParams) -> str:
     """Erzeugt den vollständigen PA-Pattern-GCode als String."""
     p = params
@@ -316,6 +350,14 @@ def generate(params: GeneratorParams) -> str:
         out.extend(_top_bar_block(
             p, bx0 + margin, bx1 - margin,
             top_bar_y_low, top_bar_y_high,
+            travel_to, print_f,
+        ))
+        # Anker-Marker links neben dem ersten Chevron.
+        # x_left = Frame-Innenkante (bx0 + margin); y_center =
+        # Chevron-Mitte (zwischen py0 und py0 + 2*dy).
+        chevron_center_y = py0 + dy
+        out.extend(_anchor_marker_block(
+            p, bx0 + margin, chevron_center_y,
             travel_to, print_f,
         ))
         for j, pa in enumerate(pa_values):

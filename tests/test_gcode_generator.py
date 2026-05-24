@@ -344,3 +344,61 @@ def test_generate_emittiert_top_bar_vor_erstem_chevron():
         f"Nur {e_count} extrudierte Moves vor erstem PA — "
         f"Top-Bar fehlt vermutlich (erwartet >= 10 = Purge+Frame+Top-Bar)"
     )
+
+
+def test_generate_setzt_anker_marker_links():
+    # Anker-Marker = gefülltes Rechteck, das linksseitig am Pattern-Start
+    # (x = bx0+margin) andockt und vertikal in der Chevron-Mitte sitzt.
+    #
+    # Geometrie (Default-Params):
+    #   x-Bereich : [bx0+margin, bx0+margin+anchor_marker_width] = [px0, px0+2]
+    #   y-Bereich : [chevron_center_y - 4, chevron_center_y + 4]
+    #               = [py0+dy - 4, py0+dy + 4]
+    #   n_lines   : round(anchor_marker_width / line_width) = 4
+    #
+    # Test-Strategie (Option A gegenüber Spec-Vorlage): Die Spec-Vorlage
+    # suchte im Bereich [px0-5, px0], was den Marker (der BEI px0 startet)
+    # nicht treffen würde. Korrekte Prüfung: extrudierende G1-Moves, deren
+    # X- UND Y-Wert gleichzeitig im Anker-Rechteck liegen. Der Chevron-
+    # Bereich überschneidet sich nicht mit diesem Y-Fenster.
+    import math as _math
+    import re
+    p = GeneratorParams()
+    g = generate(p)
+
+    lw = _line_width(p)
+    dx, dy = _chevron_deltas(p)
+    adv = _group_advance(p)
+    pa_vals = _pa_values(p)
+    pattern_w = (len(pa_vals) - 1) * adv + (p.wall_count - 1) * _wall_x_offset(p) + dx
+    chevron_h = 2 * dy
+    pattern_h = p.top_bar_height + p.chevron_band_gap + chevron_h
+    margin = 4.0
+    bx0 = p.bed_x / 2 - (pattern_w + 2 * margin) / 2
+    by0 = p.bed_y / 2 - (pattern_h + 2 * margin) / 2
+    py0 = by0 + margin
+    x_left = bx0 + margin
+    x_right = x_left + p.anchor_marker_width + 0.5   # +0.5 Puffer
+    chevron_center_y = py0 + dy
+    y_low = chevron_center_y - p.anchor_marker_height / 2 - 0.5   # Puffer
+    y_high = chevron_center_y + p.anchor_marker_height / 2 + 0.5
+
+    extruding_hits = []
+    for line in g.splitlines():
+        if " E" not in line or not line.startswith("G1"):
+            continue
+        mx = re.search(r"X([\d.-]+)", line)
+        my = re.search(r"Y([\d.-]+)", line)
+        if not mx or not my:
+            continue
+        x = float(mx.group(1))
+        y = float(my.group(1))
+        if x_left <= x <= x_right and y_low <= y <= y_high:
+            extruding_hits.append((x, y))
+
+    assert len(extruding_hits) >= 4, (
+        f"Anker-Marker fehlt — nur {len(extruding_hits)} extrudierende Moves "
+        f"im Anker-Rechteck X[{x_left:.2f},{x_right:.2f}] "
+        f"Y[{y_low:.2f},{y_high:.2f}] gefunden "
+        f"(erwartet ≥ 4 = anchor_marker_width / line_width)"
+    )
