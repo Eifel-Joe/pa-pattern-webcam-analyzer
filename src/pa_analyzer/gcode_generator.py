@@ -42,7 +42,7 @@ class GeneratorParams:
     temp: float = 240.0
     bed_temp: float = 60.0
     extrusion_multiplier: float = 1.0
-    speed_print: float = 60.0
+    speed_print: float = 100.0
     speed_travel: float = 120.0
     # Retract um jeden Travel (Ellis-Stil; 0 = aus)
     retract_distance: float = 0.5    # mm
@@ -55,6 +55,22 @@ class GeneratorParams:
     # Lüfter (0..1; PLA: Layer-1 aus, danach voll. PETG/ABS niedriger.)
     fan_speed: float = 1.0
     fan_speed_layer1: float = 0.0
+    # Pattern-Markierungen (neu, siehe docs/specs/2026-05-24-pattern-markierungen-und-speed-accel.md)
+    top_bar_height: float = 4.0         # mm Vollfüllung-Höhe
+    chevron_band_gap: float = 1.0       # mm Trennzone Top-Bar/Chevrons
+    anchor_marker_width: float = 2.0    # mm horizontal
+    anchor_marker_height: float = 8.0   # mm vertikal
+    label_glyph_height: float = 0.7     # mm PA-Label-Glyph
+    label_glyph_width: float = 0.5      # mm
+    label_glyph_gap: float = 0.2        # mm zwischen Glyphen
+    header_glyph_height: float = 1.0    # mm Speed/Accel-Header etwas größer
+    header_glyph_width: float = 0.7
+    header_column_spacing: float = 4.0  # mm zwischen Speed- und Accel-Spalte
+    header_to_labels_gap: float = 3.0   # mm Header-Trennung zu PA-Labels
+
+    # Beschleunigung (neu)
+    accel: float = 2000.0               # mm/s² (0 = nicht emittieren)
+
     # Klipper-Hooks (start_gcode unterstützt {temp} und {bed_temp})
     extruder_name: str = ""          # leer = SET_PRESSURE_ADVANCE ohne EXTRUDER=
     z_raise_end: float = 5.0         # mm Z-Raise vor Cooldown

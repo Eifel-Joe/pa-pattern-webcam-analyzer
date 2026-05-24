@@ -228,3 +228,22 @@ def test_generate_leeres_analyze_gcode_kein_trigger():
     g = generate(GeneratorParams(analyze_gcode=""))
     assert "RUN_SHELL_COMMAND" not in g
     assert g.strip().splitlines()[-1] == "PRINT_END"
+
+
+def test_generator_params_neue_defaults():
+    p = GeneratorParams()
+    # Pattern-Markierungen
+    assert p.top_bar_height == 4.0
+    assert p.anchor_marker_width == 2.0
+    assert p.anchor_marker_height == 8.0
+    assert p.label_glyph_height == 0.7
+    assert p.label_glyph_width == 0.5
+    assert p.label_glyph_gap == 0.2
+    assert p.header_glyph_height == 1.0
+    assert p.header_glyph_width == 0.7
+    assert p.header_column_spacing == 4.0
+    assert p.header_to_labels_gap == 3.0
+    assert p.chevron_band_gap == 1.0
+    # Speed/Accel
+    assert p.speed_print == 100.0    # geändert von 60
+    assert p.accel == 2000.0         # neu
