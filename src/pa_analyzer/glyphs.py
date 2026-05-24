@@ -94,12 +94,26 @@ def render_label_gcode(
         if ziffer not in GLYPHS:
             raise ValueError(f"Glyph '{ziffer}' nicht in GLYPHS.")
         for stroke in GLYPHS[ziffer]:
-            # Stroke-Punkte auf Druckbett-Koordinaten skalieren.
-            punkte = [
-                (cursor_x + px * glyph_width,
-                 cursor_y + py * glyph_height)
-                for (px, py) in stroke
-            ]
+            # Stroke-Punkte auf Druckbett-Koordinaten skalieren und
+            # ggf. um 90° im Uhrzeigersinn rotieren (Lese-Richtung
+            # von oben nach unten).
+            if rotation == 0:
+                punkte = [
+                    (cursor_x + px * glyph_width,
+                     cursor_y + py * glyph_height)
+                    for (px, py) in stroke
+                ]
+            else:  # rotation == 90
+                # (x_g, y_g) → (x_g_neu, y_g_neu) = (y_g, -x_g)
+                # Anschließend Skalierung: Original x_g läuft bis
+                # glyph_width, Original y_g bis glyph_height. Nach
+                # Rotation: x läuft jetzt bis glyph_height, y nach
+                # unten bis -glyph_width.
+                punkte = [
+                    (cursor_x + py * glyph_height,
+                     cursor_y - px * glyph_width)
+                    for (px, py) in stroke
+                ]
             # Travel zum Stroke-Anfang (ohne E).
             sx, sy = punkte[0]
             out.append(f"G1 X{_fmt(sx)} Y{_fmt(sy)} F{travel_f}")
@@ -114,6 +128,10 @@ def render_label_gcode(
                     f"G1 X{_fmt(px)} Y{_fmt(py)} "
                     f"E{_fmt_e(e)} F{print_f}")
                 prev_x, prev_y = px, py
-        # Nach Glyphe: Cursor um glyph_width + glyph_gap nach rechts.
-        cursor_x += glyph_width + glyph_gap
+        # Cursor um glyph_width + glyph_gap weiter:
+        # bei rotation=0 nach rechts (+X), bei rotation=90 nach unten (-Y).
+        if rotation == 0:
+            cursor_x += glyph_width + glyph_gap
+        else:
+            cursor_y -= glyph_width + glyph_gap
     return out

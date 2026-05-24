@@ -95,3 +95,41 @@ def test_render_label_extrudierter_move_hat_e_wert():
                   and " E" in z]
     assert len(extrudiert) >= 1, (
         f"kein extrudierter Move mit E-Wert: {lines}")
+
+
+def test_render_label_rotation_90_dreht_koordinaten():
+    # Bei rotation=90 dreht sich die Glyphe 90° im Uhrzeigersinn:
+    # Original (x_g, y_g) im Einheitsquadrat → gedruckt bei
+    # (x + y_g * glyph_height, y - x_g * glyph_width).
+    # Die Glyphe "1" hat Stroke [(0.5, 0), (0.5, 1)].
+    # Bei rotation=0, x=0, y=0:
+    #   Start  = (0+0.5*0.5, 0+0*0.7)   = (0.25, 0)
+    #   Ende   = (0+0.5*0.5, 0+1*0.7)   = (0.25, 0.7)
+    # Bei rotation=90, x=0, y=0:
+    #   Start  = (0+0*0.7,   0-0.5*0.5) = (0, -0.25)
+    #   Ende   = (0+1*0.7,   0-0.5*0.5) = (0.7, -0.25)
+    lines = render_label_gcode("1", x=0.0, y=0.0, rotation=90,
+                                **_druck_args())
+    assert any("X0 Y-0.25" in z for z in lines), (
+        f"Rotierter Start (0, -0.25) fehlt: {lines}")
+    assert any("X0.7 Y-0.25" in z for z in lines), (
+        f"Rotiertes Ende (0.7, -0.25) fehlt: {lines}")
+
+
+def test_render_label_rotation_90_text_laeuft_nach_unten():
+    # "12" bei rotation=90 — "2" muss UNTER "1" stehen (Cursor läuft
+    # nach Glyphe um glyph_width + glyph_gap = 0.7 nach UNTEN bei rot=90).
+    lines = render_label_gcode("12", x=0.0, y=0.0, rotation=90,
+                                **_druck_args())
+    # "1": stroke endet bei Y=-0.25
+    # "2": Cursor ist jetzt y = 0 - 0.7 = -0.7. "2"-Stroke beginnt
+    # bei (0, 1) im Original. Rotation:
+    # Start (0+1*0.7, -0.7-0*0.5) = (0.7, -0.7)
+    assert any("X0.7 Y-0.7" in z for z in lines), (
+        f"Cursor läuft nicht nach unten: {lines}")
+
+
+def test_render_label_rotation_invalid_wirft_value_error():
+    with pytest.raises(ValueError):
+        render_label_gcode("1", x=0.0, y=0.0, rotation=45,
+                            **_druck_args())
