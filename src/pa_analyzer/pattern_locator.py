@@ -44,36 +44,93 @@ def filament_mask(img: np.ndarray) -> np.ndarray:
 
 
 def locate_quad(mask: np.ndarray) -> np.ndarray:
-    """4 Eckpunkte der größten zusammenhängenden Filament-Region.
+    """4 Eckpunkte um ALLE Filament-Regionen des Patterns.
 
     Reihenfolge: im Uhrzeigersinn ab der Ecke mit der kleinsten
     Koordinatensumme. Über `minAreaRect` — robust gegen die
     Chevron-Einkerbungen der Box-Kante (anders als convexHull).
+
+    Stabilitäts-Diagnose 2026-05-24 (Live-Test 4, Snapshots
+    stab_a/b/c): bei v2-Pattern und Webcam-Auflösung 1280×960
+    zerfallen Chevrons in der Maske in viele einzelne Components
+    von 300-500 px je (deutlich unter MIN_AREA 1228 px). Würde
+    `connectedComponentsWithStats` direkt nach OPEN laufen,
+    blieben nur Top-Bar + ggf. zufällig durch Stringing-Pixel
+    angeheftete Chevrons übrig — die Quad-Höhe schwankte um
+    ~50 % je nach Zufalls-Brücke (76/122/76 px auf 3 Snapshots
+    im 30-s-Abstand). Fix: CLOSE vor connectedComponents. Der
+    Closing-Kernel (Breite/120 ≈ 11 px) verschmilzt Top-Bar +
+    alle Chevrons zu EINER stabilen Mega-Komponente (~32500 px
+    auf allen 3 Snapshots, Höhe 183-184 px statt 76-122).
+    Bett-Reflexionen (>>10 px entfernt) bleiben separate Mini-
+    Komponenten und werden vom MIN_AREA-Filter weggeworfen.
+    Siehe tests/test_pattern_locator.py::
+    test_locate_quad_verschmilzt_chevron_reste_unter_min_area.
     """
     opened = cv2.morphologyEx(
         mask, cv2.MORPH_OPEN,
         cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)))
-    n, lbl, stats, _ = cv2.connectedComponentsWithStats(opened)
-    if n > 1:
-        biggest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
-        opened = (lbl == biggest).astype(np.uint8) * 255
-    # Close-Kernel skaliert mit der Bildbreite (Spike: Breite/120);
-    # `| 1` erzwingt eine ungerade Größe (von morphologyEx verlangt).
-    ks = max(7, mask.shape[1] // 120) | 1
+    # Fragmentierungs-adaptives Closing: Wenn die größte Component vor
+    # Closing bereits den Großteil aller weißen Pixel ausmacht
+    # (Handy-Foto: ~93 %, Pattern dicht und zusammenhängend), ist
+    # aggressives Closing schädlich — es zieht angrenzende Hintergrund-
+    # Strukturen ans Pattern und verzerrt das Aspect-Ratio. Wenn das
+    # Pattern dagegen stark fragmentiert ist (Webcam-Snapshot: ~55 %,
+    # Chevrons zerfallen in viele kleine Components unterhalb von
+    # MIN_AREA), brauchen wir aggressives Closing, sonst geht beim
+    # connectedComponents alles außer dem Top-Bar verloren.
+    n_pre, _, stats_pre, _ = cv2.connectedComponentsWithStats(opened)
+    if n_pre > 1:
+        big_pre = max(int(stats_pre[i, cv2.CC_STAT_AREA])
+                      for i in range(1, n_pre))
+        total_pre = int((opened > 0).sum())
+        density = big_pre / total_pre if total_pre else 0.0
+    else:
+        density = 0.0
+    if density >= 0.75:
+        # Pattern schon weitgehend zusammenhängend — sanftes Closing
+        # (3x3) reicht, um Pixel-Lücken innerhalb des Patterns zu
+        # glätten ohne benachbarte Strukturen einzubinden.
+        ks = 3
+    else:
+        # Pattern fragmentiert — kräftiges Closing nötig. ks skaliert
+        # mit Bildbreite (Spike: Breite/120), nach oben bei 15 px
+        # begrenzt; `| 1` erzwingt ungerade Größe.
+        # NOT-TO-DO: ks > 15 — bei großen Bildern (HEIC) würde das
+        # Pattern mit Hintergrund verschmelzen; und für die Webcam-
+        # Größe (1280) ergibt //120 ohnehin nur 10.
+        ks = max(7, min(15, mask.shape[1] // 120)) | 1
     closed = cv2.morphologyEx(
         opened, cv2.MORPH_CLOSE,
         cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (ks, ks)))
-    cnts, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL,
-                               cv2.CHAIN_APPROX_SIMPLE)
-    if not cnts:
+    n, lbl, stats, _ = cv2.connectedComponentsWithStats(closed)
+    # Mindest-Fläche für "ernsthafte" Komponente: 0.1 % der Bildfläche,
+    # mindestens 200 px. Schützt davor, bei extrem dunklen Bildern
+    # zufälligen Pixel-Rauschen-Cluster als Pattern auszuwählen.
+    min_area = max(200, mask.size // 1000)
+    # Nur die GRÖSSTE Komponente nehmen — nach dem Closing-Vorher
+    # ist das echte Pattern zu einer Mega-Komponente verschmolzen.
+    # NOT-TO-DO: Alle qualifying Components kombinieren — Bei
+    # hochauflösenden Fotos (HEIC, Hintergrund-Strukturen) gibt es
+    # qualifying Side-Components abseits des Patterns; deren
+    # Inklusion ruiniert das Aspect-Ratio (Validierung im Test
+    # test_locate_quad_umschliesst_patternregion_heic).
+    candidates = [(int(stats[i, cv2.CC_STAT_AREA]), i)
+                  for i in range(1, n)
+                  if stats[i, cv2.CC_STAT_AREA] >= min_area]
+    if not candidates:
         raise ValueError(
             "locate_quad: keine Filament-Region gefunden — Bild zu "
             "dunkel oder Filamentfarbe nicht erkennbar?")
-    big = max(cnts, key=cv2.contourArea)
-    pts = cv2.boxPoints(cv2.minAreaRect(big)).astype(np.float64)
-    center = pts.mean(axis=0)
-    order = np.argsort(np.arctan2(pts[:, 1] - center[1],
-                                  pts[:, 0] - center[0]))
-    pts = pts[order]
-    start = int(np.argmin(pts.sum(axis=1)))
-    return np.roll(pts, -start, axis=0).astype(np.float32)
+    _, biggest = max(candidates)
+    selected = (lbl == biggest).astype(np.uint8) * 255
+    # Direkt minAreaRect über alle Pixel der gewählten Komponente.
+    ys, xs = np.where(selected > 0)
+    pts = np.column_stack([xs, ys]).astype(np.float32)
+    box = cv2.boxPoints(cv2.minAreaRect(pts)).astype(np.float64)
+    center = box.mean(axis=0)
+    order = np.argsort(np.arctan2(box[:, 1] - center[1],
+                                  box[:, 0] - center[0]))
+    box = box[order]
+    start = int(np.argmin(box.sum(axis=1)))
+    return np.roll(box, -start, axis=0).astype(np.float32)
