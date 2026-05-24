@@ -174,3 +174,51 @@ def test_run_webcam_offline_gibt_fehlercode(tmp_path, capsys):
                "--gcode", str(FIXTURES / "pa_pattern.gcode")])
     assert rc == 1
     assert "Fehler" in capsys.readouterr().err
+
+
+def test_generate_honoriert_cli_speed_und_accel(tmp_path, minimal_conf,
+                                                  capsys):
+    gcode_path = tmp_path / "out.gcode"
+    from pa_analyzer.cli import main
+    main([
+        "--config", str(minimal_conf),
+        "generate", "-o", str(gcode_path),
+        "--speed", "150",
+        "--accel", "2500",
+    ])
+    gc = gcode_path.read_text(encoding="utf-8")
+    # speed_print=150 → F-Werte im G1-Print mit F9000 (150*60)
+    assert " F9000" in gc, "CLI --speed kommt nicht im GCode an"
+    # accel=2500 → SET_VELOCITY_LIMIT ACCEL=2500
+    assert "SET_VELOCITY_LIMIT ACCEL=2500" in gc
+
+
+def test_generate_zieht_speed_accel_aus_config(tmp_path, capsys):
+    cfg = tmp_path / "test.conf"
+    cfg.write_text(
+        "[macros]\nstart_gcode = PRINT_START\n"
+        "[generator]\nspeed_print = 80\naccel = 1500\n",
+        encoding="utf-8")
+    gcode_path = tmp_path / "out.gcode"
+    from pa_analyzer.cli import main
+    main(["--config", str(cfg), "generate", "-o", str(gcode_path)])
+    gc = gcode_path.read_text(encoding="utf-8")
+    assert " F4800" in gc  # 80 * 60
+    assert "SET_VELOCITY_LIMIT ACCEL=1500" in gc
+
+
+def test_generate_cli_ueberschreibt_config(tmp_path, capsys):
+    cfg = tmp_path / "test.conf"
+    cfg.write_text(
+        "[macros]\nstart_gcode = PRINT_START\n"
+        "[generator]\nspeed_print = 80\naccel = 1500\n",
+        encoding="utf-8")
+    gcode_path = tmp_path / "out.gcode"
+    from pa_analyzer.cli import main
+    main([
+        "--config", str(cfg), "generate", "-o", str(gcode_path),
+        "--speed", "200",  # überschreibt Config-80
+    ])
+    gc = gcode_path.read_text(encoding="utf-8")
+    assert " F12000" in gc       # 200*60, CLI hat gewonnen
+    assert "SET_VELOCITY_LIMIT ACCEL=1500" in gc  # Accel kam aus Config

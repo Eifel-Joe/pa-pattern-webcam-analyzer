@@ -78,6 +78,18 @@ def _cmd_generate(args: argparse.Namespace) -> int:
     # Luefter selbst abschaltet, laesst der Generator das weg.
     if cfg.cooldown_in_end_macro:
         gen_overrides["cooldown_at_end"] = False
+    # Override-Hierarchie: CLI > Config > GeneratorParams-Default.
+    # args.speed / args.accel sind None wenn der User nichts angegeben hat
+    # (Sentinel-Pattern — nicht zu verwechseln mit einem expliziten 0).
+    if args.speed is not None:
+        gen_overrides["speed_print"] = args.speed
+    elif cfg.speed_print is not None:
+        gen_overrides["speed_print"] = cfg.speed_print
+
+    if args.accel is not None:
+        gen_overrides["accel"] = args.accel
+    elif cfg.accel is not None:
+        gen_overrides["accel"] = cfg.accel
     params = GeneratorParams(
         pa_start=start, pa_end=end, pa_step=step,
         temp=args.temp, bed_temp=args.bed_temp,
@@ -135,6 +147,13 @@ def _build_parser() -> argparse.ArgumentParser:
                         "PETG/ABS deutlich niedriger oder 0.")
     g.add_argument("--refine-from",
                    help="Report-JSON aus Lauf 1 für die Lauf-2-Grenzen")
+    g.add_argument("--speed", type=float, default=None,
+                   help="Druck-Geschwindigkeit in mm/s (Default: aus "
+                        "pa_analyzer.conf [generator], sonst 100)")
+    g.add_argument("--accel", type=float, default=None,
+                   help="Beschleunigung in mm/s² (Default: aus "
+                        "pa_analyzer.conf [generator], sonst 2000; "
+                        "0 = nicht emittieren)")
     g.set_defaults(func=_cmd_generate)
 
     a = sub.add_parser("analyze", help="lokale Bilddatei auswerten")
