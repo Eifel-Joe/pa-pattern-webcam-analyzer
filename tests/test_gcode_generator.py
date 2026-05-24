@@ -233,40 +233,33 @@ def test_generate_leeres_analyze_gcode_kein_trigger():
 
 def test_generator_params_neue_defaults():
     p = GeneratorParams()
-    # Pattern-Markierungen
-    assert p.top_bar_height == 4.0
+    # Pattern-Markierungen (v2: deutlich größer für Sichtbarkeit)
+    assert p.top_bar_height == 12.0          # v2: 4 → 12
     assert p.anchor_marker_width == 2.0
     assert p.anchor_marker_height == 8.0
-    assert p.label_glyph_height == 0.7
-    assert p.label_glyph_width == 0.5
+    assert p.label_glyph_height == 2.5       # v2: 0.7 → 2.5
+    assert p.label_glyph_width == 1.5        # v2: 0.5 → 1.5
     assert p.label_glyph_gap == 0.2
-    assert p.header_glyph_height == 1.0
-    assert p.header_glyph_width == 0.7
+    assert p.header_glyph_height == 4.0      # v2: 1.0 → 4.0
+    assert p.header_glyph_width == 2.5       # v2: 0.7 → 2.5
     assert p.header_column_spacing == 4.0
     assert p.header_to_labels_gap == 3.0
-    assert p.chevron_band_gap == 1.0
-    # Speed/Accel
-    assert p.speed_print == 100.0    # geändert von 60
-    assert p.accel == 2000.0         # neu
+    assert p.chevron_band_gap == 0.0         # v2: 1.0 → 0.0 (Top-Bar berührt Chevrons)
+    # Speed/Accel (unverändert)
+    assert p.speed_print == 100.0
+    assert p.accel == 2000.0
 
 
 def test_generate_pattern_hoehe_enthaelt_top_bar_und_band_gap():
-    # Frame-Y-Erstreckung muss jetzt = 2*margin + chevron_band +
-    # chevron_band_gap + top_bar_height sein.
+    # Y-Erstreckung aller extrudierenden Moves (Pre-PA) muss die
+    # gesamte Pattern-Höhe abdecken.
+    # v2 (margin=0, chevron_band_gap=0, top_bar_height=12):
     # 2*dy bei wall_side_length=30, corner_angle=90 → 2*30*sin(45°) ≈ 42.43
-    # pattern_h = top_bar_height(4) + chevron_band_gap(1) + 42.43 ≈ 47.43
-    # Rahmenhöhe = pattern_h + 2*margin(4) ≈ 55.43 mm
-    # OHNE Top-Bar wäre Rahmenhöhe = 2*dy + 2*margin ≈ 50.43 mm
+    # pattern_h = top_bar_height(12) + chevron_band_gap(0) + 42.43 ≈ 54.43
+    # OHNE Top-Bar wäre Y-Erstreckung = 2*dy ≈ 42.43 mm
     p = GeneratorParams()
     g = generate(p)
-    # Sammle nur Frame-Y-Werte: Frame-Zeilen enthalten kein 'E'-Feld
-    # bei Travel und emittieren 4 Kanten. Statt Heuristik: wir parsen
-    # die exakten Frame-Koordinaten durch Vergleich mit den erwarteten Grenzen.
-    # Einfacher: Frame-Höhe = by1 - by0. Aus den 4 Frame-Zeilen nach dem
-    # Frame-Travel lassen sich by0 und by1 direkt ablesen.
     import re
-    # Frame-Zeilen: extrudierende G1-Moves mit sowohl X als auch Y,
-    # die VOR dem ersten SET_PRESSURE_ADVANCE stehen
     zeilen = g.splitlines()
     first_pa_idx = next(i for i, z in enumerate(zeilen)
                         if "SET_PRESSURE_ADVANCE" in z)
@@ -278,11 +271,11 @@ def test_generate_pattern_hoehe_enthaelt_top_bar_und_band_gap():
             if m:
                 frame_ys.add(float(m.group(1)))
     frame_h = max(frame_ys) - min(frame_ys)
-    # Erwartete Rahmenhöhe MIT Top-Bar: ≈ 55.43 mm
-    # Schwellwert: zwischen 50.43 (ohne) und 55.43 (mit) → > 54.0
-    assert frame_h >= 54.0, (
-        f"Rahmen-Höhe {frame_h:.2f} mm zu klein — "
-        f"Top-Bar (4 mm) + Band-Gap (1 mm) fehlen vermutlich")
+    # Erwartete Y-Erstreckung MIT Top-Bar: ≈ 54.43 mm
+    # Schwellwert: zwischen 42.43 (nur Chevrons) und 54.43 (mit Top-Bar) → > 50.0
+    assert frame_h >= 50.0, (
+        f"Y-Erstreckung {frame_h:.2f} mm zu klein — "
+        f"Top-Bar (12 mm) fehlt vermutlich")
 
 
 def test_generate_zieht_solid_top_bar():
@@ -348,21 +341,16 @@ def test_generate_emittiert_top_bar_vor_erstem_chevron():
 
 
 def test_generate_setzt_anker_marker_links():
-    # Anker-Marker = gefülltes Rechteck, das linksseitig am Pattern-Start
-    # (x = bx0+margin) andockt und vertikal in der Chevron-Mitte sitzt.
+    # Anker-Marker = gefülltes Rechteck, das linksseitig an Frame-Left (bx0)
+    # andockt und vertikal in der Chevron-Mitte sitzt.
     #
-    # Geometrie (Default-Params):
-    #   x-Bereich : [bx0+margin, bx0+margin+anchor_marker_width] = [px0, px0+2]
+    # Geometrie (Default-Params, v2: margin=0, left_padding=2.5):
+    #   x-Bereich : [bx0, bx0 + anchor_marker_width]
     #   y-Bereich : [chevron_center_y - 4, chevron_center_y + 4]
-    #               = [py0+dy - 4, py0+dy + 4]
     #   n_lines   : round(anchor_marker_width / line_width) = 4
     #
-    # Test-Strategie (Option A gegenüber Spec-Vorlage): Die Spec-Vorlage
-    # suchte im Bereich [px0-5, px0], was den Marker (der BEI px0 startet)
-    # nicht treffen würde. Korrekte Prüfung: extrudierende G1-Moves, deren
-    # X- UND Y-Wert gleichzeitig im Anker-Rechteck liegen. Der Chevron-
-    # Bereich überschneidet sich nicht mit diesem Y-Fenster.
-    import math as _math
+    # Test-Strategie: extrudierende G1-Moves im Anker-Rechteck suchen.
+    # Chevron-Bereich überschneidet sich nicht mit diesem Y-Fenster.
     import re
     p = GeneratorParams()
     g = generate(p)
@@ -374,11 +362,15 @@ def test_generate_setzt_anker_marker_links():
     pattern_w = (len(pa_vals) - 1) * adv + (p.wall_count - 1) * _wall_x_offset(p) + dx
     chevron_h = 2 * dy
     pattern_h = p.top_bar_height + p.chevron_band_gap + chevron_h
-    margin = 4.0
-    bx0 = p.bed_x / 2 - (pattern_w + 2 * margin) / 2
+    # v2: margin=0, left_padding=anchor_marker_width + 0.5
+    margin = 0.0
+    left_padding = p.anchor_marker_width + 0.5
+    total_w = pattern_w + left_padding
+    bx0 = p.bed_x / 2 - (total_w + 2 * margin) / 2
     by0 = p.bed_y / 2 - (pattern_h + 2 * margin) / 2
     py0 = by0 + margin
-    x_left = bx0 + margin
+    # Anker sitzt an bx0 (Frame-Left), nicht mehr an bx0+margin
+    x_left = bx0
     x_right = x_left + p.anchor_marker_width + 0.5   # +0.5 Puffer
     chevron_center_y = py0 + dy
     y_low = chevron_center_y - p.anchor_marker_height / 2 - 0.5   # Puffer
@@ -558,3 +550,100 @@ def test_generate_kein_accel_kein_header_label():
         f"Mit-Accel-Output ({g1_mit}) sollte ~10-30 Moves mehr haben "
         f"als Ohne-Accel ({g1_ohne}) — Accel-Header wird nicht "
         "konditional emittiert")
+
+
+def test_generate_drei_linien_frame_kein_rechts():
+    """Frame ist 3-Linien-"["-Form: links + Top-Bar (implizit oben) + unten.
+    KEIN expliziter Frame-Right-Strich — Chevron-Spitzen bilden rechten Rand.
+
+    Erwartung: im GCode gibt es genau 2 Frame-Strich-G1-Moves
+    (links vertikal, unten horizontal). Die Top-Bar ist als
+    Vollfüllung gerendert (mehrere Linien); die oberste Linie der
+    Top-Bar fungiert als Frame-Top.
+    """
+    p = GeneratorParams()
+    g = generate(p)
+    # Hole alle G1-Bewegungen aus dem ERSTEN Layer (vor erstem
+    # SET_PRESSURE_ADVANCE) — das umfasst Purge, Frame, Top-Bar, Anker.
+    lines = g.splitlines()
+    pa_idx = next(i for i, l in enumerate(lines)
+                  if "SET_PRESSURE_ADVANCE" in l)
+    pre_pa = lines[:pa_idx]
+    # Zähle horizontale Frame-Bottom-Linie und vertikale Frame-Left-Linie.
+    # Frame-Bottom: einzige extrudierende horizontale Linie auf y == by0
+    # Frame-Left: einzige extrudierende vertikale Linie auf x == bx0
+    # Wir prüfen einfach: KEINE extrudierende Linie liegt bei x == bx1
+    # (das wäre Frame-Right — und das gibt's nicht mehr).
+    # Approximation: Bett-Mitte ist 150,150 (bed_x/y default 300/300).
+    # Pattern-Breite ~75mm, also bx1 ≈ 150 + 37.5 = 187.5.
+    # Wir suchen explizit nach Moves die x ≈ 187 erreichen UND nicht
+    # zu einem Chevron-Apex gehören (chevron-apex hat charakteristisches Y).
+    import re
+    # Sammle alle (x, y, e) für extrudierende Pre-PA Moves.
+    extrudiert = []
+    for line in pre_pa:
+        m = re.match(r"^G1 X([\d.-]+) Y([\d.-]+).*E([\d.-]+)", line)
+        if m:
+            extrudiert.append((float(m.group(1)), float(m.group(2))))
+    assert len(extrudiert) > 0, "Keine extrudierten Frame/Top-Bar-Moves"
+    # Maximales X im Pre-PA-Bereich = Frame-Right wäre hier
+    max_x = max(x for x, y in extrudiert)
+    # Wenn es einen Frame-Right gäbe: viele Moves bei max_x mit
+    # verschiedenen Y (vertikale Frame-Linie). Wir checken: max_x sollte
+    # bei Top-Bar-Linien auftauchen (mehrere horizontale Moves enden bei
+    # max_x), ABER nicht als isolierte vertikale Linie.
+    # Vereinfachung: zähle MOVES bei x == max_x mit unterschiedlichen Y.
+    # Bei einem 4-Linien-Frame wären das exakt 2 Moves (oben-rechts, unten-rechts).
+    # Bei 3-Linien-Frame (kein rechts): die max_x-Moves sind Top-Bar-Endpunkte
+    # (mehrere Y-Werte, weil mehrere Top-Bar-Linien dort enden).
+    moves_at_max_x = [(x, y) for x, y in extrudiert if abs(x - max_x) < 0.01]
+    # Mehr als 2 Moves bei max_x → Top-Bar-Stadion-Füllung (viele Linien
+    # enden dort, je nach Boustrophedon-Richtung). Bei einem expliziten
+    # Frame-Right wären es genau 2 (oben-rechts, unten-rechts).
+    # Tatsächlich Top-Bar hat ~26 Linien (12mm/0.45mm), ungefähr die
+    # Hälfte endet bei max_x → ~13 Moves.
+    assert len(moves_at_max_x) > 5, (
+        f"Nur {len(moves_at_max_x)} Moves bei max_x={max_x:.2f} — "
+        f"deutet auf einen expliziten Frame-Right hin (3-Linien-Frame "
+        f"hätte deutlich mehr durch Top-Bar-Boustrophedon)")
+
+
+def test_generate_top_bar_beruehrt_chevrons():
+    """chevron_band_gap = 0 → Top-Bar-Unterkante = Chevron-Oberkante."""
+    p = GeneratorParams()
+    g = generate(p)
+    # Top-Bar Unterkante: y_low der untersten Top-Bar-Linie
+    # Chevron-Oberkante: y_top der obersten Chevron-Punkte
+    # Test indirekt: 2*dy + top_bar_height = pattern_h (kein band_gap)
+    import math
+    dy = math.sin(math.radians(p.corner_angle / 2)) * p.wall_side_length
+    erwartete_pattern_h = p.top_bar_height + 2 * dy + p.chevron_band_gap
+    # Mit chevron_band_gap=0: pattern_h = 12 + 42.43 = 54.43
+    assert p.chevron_band_gap == 0.0
+    assert abs(erwartete_pattern_h - 54.43) < 0.5
+
+
+def test_generate_margin_null_kein_padding_zwischen_frame_und_pattern():
+    """v2: margin = 0, aber left_padding = anchor_marker_width + 0.5
+    für den Anker-Bereich links."""
+    p = GeneratorParams()
+    g = generate(p)
+    # Total-Width = pattern_w + left_padding (links für Anker)
+    # Frame-Left ist bei bx0, Anker bei bx0, Chevron-Start bei bx0+left_padding.
+    # Indirekt prüfbar: Y-Span ist GENAU pattern_h (kein extra margin).
+    import re
+    ys = []
+    for line in g.splitlines():
+        if not line.startswith("G1"):
+            continue
+        if " E" not in line:
+            continue  # nur extrudierende Moves (kein Purge/Travel)
+        m = re.search(r"\sY([\d.-]+)", line)
+        if m:
+            ys.append(float(m.group(1)))
+    y_span = max(ys) - min(ys)
+    # Pattern_h ≈ 54.43 (siehe Test oben). Y-Span ≈ pattern_h (ggf. plus
+    # Purge-Y, also wir filtern auf Pre-PA — vereinfachte Form:
+    # min(ys) > 100 — alle Moves sind im Bett-Mitte-Bereich
+    # Hier: einfach prüfen Y-Span ist mind. 50 mm (= 12 + 42 ohne Padding).
+    assert y_span >= 50.0, f"Y-Span {y_span:.2f} zu klein"

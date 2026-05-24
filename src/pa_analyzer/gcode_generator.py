@@ -57,16 +57,16 @@ class GeneratorParams:
     # Lüfter (0..1; PLA: Layer-1 aus, danach voll. PETG/ABS niedriger.)
     fan_speed: float = 1.0
     fan_speed_layer1: float = 0.0
-    # Pattern-Markierungen (neu, siehe docs/specs/2026-05-24-pattern-markierungen-und-speed-accel.md)
-    top_bar_height: float = 4.0         # mm Vollfüllung-Höhe
-    chevron_band_gap: float = 1.0       # mm Trennzone Top-Bar/Chevrons
+    # Pattern-Markierungen (v2: deutlich größer für Webcam-Lesbarkeit)
+    top_bar_height: float = 12.0        # mm Vollfüllung-Höhe (v2: 4 → 12)
+    chevron_band_gap: float = 0.0       # mm Trennzone Top-Bar/Chevrons (v2: 1 → 0, berührt Chevrons)
     anchor_marker_width: float = 2.0    # mm horizontal
     anchor_marker_height: float = 8.0   # mm vertikal
-    label_glyph_height: float = 0.7     # mm PA-Label-Glyph
-    label_glyph_width: float = 0.5      # mm
+    label_glyph_height: float = 2.5     # mm PA-Label-Glyph (v2: 0.7 → 2.5)
+    label_glyph_width: float = 1.5      # mm (v2: 0.5 → 1.5)
     label_glyph_gap: float = 0.2        # mm zwischen Glyphen
-    header_glyph_height: float = 1.0    # mm Speed/Accel-Header etwas größer
-    header_glyph_width: float = 0.7
+    header_glyph_height: float = 4.0    # mm Speed/Accel-Header (v2: 1.0 → 4.0)
+    header_glyph_width: float = 2.5     # mm (v2: 0.7 → 2.5)
     header_column_spacing: float = 4.0  # mm zwischen Speed- und Accel-Spalte
     header_to_labels_gap: float = 3.0   # mm Header-Trennung zu PA-Labels
 
@@ -350,22 +350,24 @@ def generate(params: GeneratorParams) -> str:
     retract = _retract_block(p)
     unretract = _unretract_block(p)
 
-    # Pattern-Abmessungen und Bett-Zentrierung
+    # Pattern-Abmessungen und Bett-Zentrierung (v2: margin=0 + left_padding)
+    chevron_h = 2 * dy
     pattern_w = (
         (len(pa_values) - 1) * adv + (p.wall_count - 1) * wall_off + dx
     )
-    chevron_h = 2 * dy
-    # pattern_h umfasst: Top-Bar + Trennzone + Chevron-Band
-    # (Vorbereitung für Top-Bar-Emit in Task 6)
     pattern_h = p.top_bar_height + p.chevron_band_gap + chevron_h
-    margin = 4.0
-    bx0 = p.bed_x / 2 - (pattern_w + 2 * margin) / 2
+    margin = 0.0  # v2: Frame berührt Pattern direkt (kein Luftspalt)
+    # left_padding: Anker-Marker links innerhalb des Frames + kleiner Gap
+    # zur ersten Chevron-Basis (verhindert Überlappung mit Chevron-Linien)
+    left_padding = p.anchor_marker_width + 0.5
+    total_w = pattern_w + left_padding
+    bx0 = p.bed_x / 2 - (total_w + 2 * margin) / 2
     by0 = p.bed_y / 2 - (pattern_h + 2 * margin) / 2
-    bx1 = bx0 + pattern_w + 2 * margin
+    bx1 = bx0 + total_w + 2 * margin
     by1 = by0 + pattern_h + 2 * margin
-    px0 = bx0 + margin            # Start-X des ersten Chevrons
-    py0 = by0 + margin            # untere Arm-Enden, wie bisher
-    # Top-Bar-Y-Bereich (für späteren Helper in Task 6):
+    px0 = bx0 + margin + left_padding      # Chevron-Start nach Anker-Bereich
+    py0 = by0 + margin                     # Chevron-Bottom
+    # Top-Bar-Y-Bereich:
     top_bar_y_low = by1 - margin - p.top_bar_height
     top_bar_y_high = by1 - margin
 
@@ -418,16 +420,17 @@ def generate(params: GeneratorParams) -> str:
             f"G1 X{_fmt(p.purge_x_margin + p.purge_length)} "
             f"Y{_fmt(purge_y)} E{_fmt_e(e_purge)} F{purge_f}")
 
-    # Rahmen-Box (Travel hin, dann 4 extrudierende Moves)
-    e_h = _extrusion(bx1 - bx0, lw, p.layer_height, p.filament_diameter,
-                     p.extrusion_multiplier)
-    e_v = _extrusion(by1 - by0, lw, p.layer_height, p.filament_diameter,
-                     p.extrusion_multiplier)
-    out.extend(travel_to(bx0, by0))
-    out.append(f"G1 X{_fmt(bx0)} Y{_fmt(by1)} E{_fmt_e(e_v)} F{print_f}")
-    out.append(f"G1 X{_fmt(bx1)} Y{_fmt(by1)} E{_fmt_e(e_h)} F{print_f}")
-    out.append(f"G1 X{_fmt(bx1)} Y{_fmt(by0)} E{_fmt_e(e_v)} F{print_f}")
-    out.append(f"G1 X{_fmt(bx0)} Y{_fmt(by0)} E{_fmt_e(e_h)} F{print_f}")
+    # Rahmen-Box (v2: 3-Linien-"["-Form — links + unten;
+    # oben implizit durch Top-Bar-Oberkante, kein expliziter Rechts-Strich)
+    e_v = _extrusion(by1 - by0, lw, p.layer_height,
+                     p.filament_diameter, p.extrusion_multiplier)
+    e_h = _extrusion(bx1 - bx0, lw, p.layer_height,
+                     p.filament_diameter, p.extrusion_multiplier)
+    out.extend(travel_to(bx0, by1))
+    out.append(f"G1 X{_fmt(bx0)} Y{_fmt(by0)} "
+               f"E{_fmt_e(e_v)} F{print_f}")  # links: oben → unten
+    out.append(f"G1 X{_fmt(bx1)} Y{_fmt(by0)} "
+               f"E{_fmt_e(e_h)} F{print_f}")  # unten: links → rechts
 
     # SET_PRESSURE_ADVANCE-Präfix vorbereiten (optional mit EXTRUDER=)
     set_pa_prefix = (
@@ -444,17 +447,20 @@ def generate(params: GeneratorParams) -> str:
         if layer == 1 and p.fan_speed != p.fan_speed_layer1:
             out.append(f"M106 S{round(p.fan_speed * 255)}")
         # Top-Bar in jedem Layer (CV-Anker für orientation.py).
+        # v2: margin=0, Top-Bar spannt über gesamte Frame-Breite (bx0..bx1),
+        # einschließlich left_padding-Bereich (Anker überschneidet Top-Bar
+        # nicht in Y — kein Problem).
         out.extend(_top_bar_block(
-            p, bx0 + margin, bx1 - margin,
+            p, bx0, bx1,
             top_bar_y_low, top_bar_y_high,
             travel_to, print_f,
         ))
-        # Anker-Marker links neben dem ersten Chevron.
-        # x_left = Frame-Innenkante (bx0 + margin); y_center =
-        # Chevron-Mitte (zwischen py0 und py0 + 2*dy).
+        # Anker-Marker links angedockt an Frame-Left (bx0).
+        # v2: margin=0, Anker sitzt direkt an der Frame-Linie.
+        # y_center = Chevron-Mitte (zwischen py0 und py0 + 2*dy).
         chevron_center_y = py0 + dy
         out.extend(_anchor_marker_block(
-            p, bx0 + margin, chevron_center_y,
+            p, bx0, chevron_center_y,
             travel_to, print_f,
         ))
         for j, pa in enumerate(pa_values):
@@ -481,8 +487,8 @@ def generate(params: GeneratorParams) -> str:
             # Labels laufen nach unten in die Bar hinein).
             label_y_top = top_bar_y_high - 0.5  # 0.5 mm Padding zum oberen Rand
             # Speed/Accel-Header VOR den PA-Labels (ganz links auf der Top-Bar).
-            # 0.5 mm Padding zur Frame-Innenkante (bx0 + margin).
-            header_x_start = bx0 + margin + 0.5
+            # 0.5 mm Padding zur Frame-Left-Kante (v2: margin=0, also bx0).
+            header_x_start = bx0 + 0.5
             out.extend(_header_labels_block(
                 p, header_x_start, label_y_top,
             ))
