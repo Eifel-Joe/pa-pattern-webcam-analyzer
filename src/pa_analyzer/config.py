@@ -53,6 +53,9 @@ class Config:
     # True, wenn das end_gcode-Macro Hotend/Bett/Luefter selbst abschaltet.
     # Dann laesst der Generator M104 S0 / M140 S0 / M107 weg.
     cooldown_in_end_macro: bool = False
+    # Generator-Overrides (None = GeneratorParams-Default greift)
+    speed_print: float | None = None
+    accel: float | None = None
 
 
 def _stripped_or_none(value: str | None) -> str | None:
@@ -85,6 +88,19 @@ def load_config(path: str | Path) -> Config:
     def get(section: str, option: str, default: str) -> str:
         return parser.get(section, option, fallback=default)
 
+    def _get_float(section: str, option: str) -> float | None:
+        """Liest ein optionales Float-Feld. Fehlt es / ist leer → None.
+        Ungültige Werte → ValueError (wrap durch das zentrale Try-Catch)."""
+        raw = parser.get(section, option, fallback=None)
+        if raw is None or not raw.strip():
+            return None
+        try:
+            return float(raw.strip())
+        except ValueError as exc:
+            raise ValueError(
+                f"Konfiguration unlesbar: {path} "
+                f"([{section}] {option} = {raw!r} ist keine Zahl)") from exc
+
     return Config(
         webcam_url=get("webcam", "url", ""),
         gcode_path=get("paths", "gcode_path", "pa_calibration.gcode"),
@@ -99,4 +115,6 @@ def load_config(path: str | Path) -> Config:
             "macros", "purge_in_start_macro", fallback=False),
         cooldown_in_end_macro=parser.getboolean(
             "macros", "cooldown_in_end_macro", fallback=False),
+        speed_print=_get_float("generator", "speed_print"),
+        accel=_get_float("generator", "accel"),
     )

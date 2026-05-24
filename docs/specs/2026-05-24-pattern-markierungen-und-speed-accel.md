@@ -85,10 +85,13 @@ top_bar_height: float = 4.0        # mm Vollfüllung-Höhe
 anchor_marker_width: float = 2.0   # mm horizontal (schmal)
 anchor_marker_height: float = 8.0  # mm vertikal (länglich, gut sichtbar)
 label_glyph_height: float = 0.7    # mm — Höhe einer einzelnen Ziffer
-label_glyph_width: float = 1.5     # mm — Breite einer einzelnen Ziffer
+label_glyph_width: float = 0.5     # mm — Breite einer einzelnen Ziffer
+                                   #   (klein, damit 5 Glyphen "0.020" als
+                                   #   hochkant-Spalte in die 4-mm-Top-Bar passen)
 label_glyph_gap: float = 0.2       # mm — Abstand zwischen gestapelten Ziffern
 header_glyph_height: float = 1.0   # mm — Speed/Accel-Spalten etwas größer (Header-Effekt)
-header_glyph_width: float = 2.0    # mm
+header_glyph_width: float = 0.7    # mm — kompakt, damit "2000" (4 Glyphen)
+                                   #   noch in die Top-Bar passen
 header_column_spacing: float = 4.0 # mm — Abstand zwischen Speed- und Accel-Spalte
 header_to_labels_gap: float = 3.0  # mm — Trenn-Lücke zwischen Header und PA-Werten
 
@@ -186,10 +189,10 @@ top_bar_height: float = 4.0          # mm Vollfüllung über Pattern-Breite
 anchor_marker_width: float = 2.0
 anchor_marker_height: float = 8.0
 label_glyph_height: float = 0.7
-label_glyph_width: float = 1.5
+label_glyph_width: float = 0.5
 label_glyph_gap: float = 0.2
 header_glyph_height: float = 1.0
-header_glyph_width: float = 2.0
+header_glyph_width: float = 0.7
 header_column_spacing: float = 4.0
 header_to_labels_gap: float = 3.0
 accel: float = 2000.0                # mm/s²; 0 = kein Accel-Emit

@@ -16,6 +16,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
+from .glyphs import render_label_gcode
+
 
 @dataclass(frozen=True)
 class GeneratorParams:
@@ -42,7 +44,7 @@ class GeneratorParams:
     temp: float = 240.0
     bed_temp: float = 60.0
     extrusion_multiplier: float = 1.0
-    speed_print: float = 60.0
+    speed_print: float = 100.0
     speed_travel: float = 120.0
     # Retract um jeden Travel (Ellis-Stil; 0 = aus)
     retract_distance: float = 0.5    # mm
@@ -55,6 +57,22 @@ class GeneratorParams:
     # Lüfter (0..1; PLA: Layer-1 aus, danach voll. PETG/ABS niedriger.)
     fan_speed: float = 1.0
     fan_speed_layer1: float = 0.0
+    # Pattern-Markierungen (neu, siehe docs/specs/2026-05-24-pattern-markierungen-und-speed-accel.md)
+    top_bar_height: float = 4.0         # mm Vollfüllung-Höhe
+    chevron_band_gap: float = 1.0       # mm Trennzone Top-Bar/Chevrons
+    anchor_marker_width: float = 2.0    # mm horizontal
+    anchor_marker_height: float = 8.0   # mm vertikal
+    label_glyph_height: float = 0.7     # mm PA-Label-Glyph
+    label_glyph_width: float = 0.5      # mm
+    label_glyph_gap: float = 0.2        # mm zwischen Glyphen
+    header_glyph_height: float = 1.0    # mm Speed/Accel-Header etwas größer
+    header_glyph_width: float = 0.7
+    header_column_spacing: float = 4.0  # mm zwischen Speed- und Accel-Spalte
+    header_to_labels_gap: float = 3.0   # mm Header-Trennung zu PA-Labels
+
+    # Beschleunigung (neu)
+    accel: float = 2000.0               # mm/s² (0 = nicht emittieren)
+
     # Klipper-Hooks (start_gcode unterstützt {temp} und {bed_temp})
     extruder_name: str = ""          # leer = SET_PRESSURE_ADVANCE ohne EXTRUDER=
     z_raise_end: float = 5.0         # mm Z-Raise vor Cooldown
@@ -163,6 +181,157 @@ def _format_start(p: GeneratorParams) -> str:
             .replace("{bed_temp}", _fmt(p.bed_temp)))
 
 
+def _top_bar_block(
+    p: GeneratorParams, x0: float, x1: float,
+    y_low: float, y_high: float,
+    travel_to_fn, print_f: int,
+) -> list[str]:
+    """Vollfüllung der Top-Bar als Linien-Stadion.
+
+    Zieht horizontale Linien Y=y_low bis Y=y_high im Abstand
+    `line_width`, abwechselnd in X-Richtung (Boustrophedon = Pflüge
+    drehen ohne Travel).
+    """
+    lw = _line_width(p)
+    e_h = _extrusion(x1 - x0, lw, p.layer_height,
+                     p.filament_diameter, p.extrusion_multiplier)
+    out: list[str] = []
+    n_lines = max(1, int(round((y_high - y_low) / lw)))
+    # Travel zum Start
+    out.extend(travel_to_fn(x0, y_low))
+    rechts = True
+    for i in range(n_lines):
+        y = y_low + i * lw
+        if rechts:
+            out.append(f"G1 X{_fmt(x1)} Y{_fmt(y)} "
+                       f"E{_fmt_e(e_h)} F{print_f}")
+        else:
+            out.append(f"G1 X{_fmt(x0)} Y{_fmt(y)} "
+                       f"E{_fmt_e(e_h)} F{print_f}")
+        rechts = not rechts
+    return out
+
+
+def _anchor_marker_block(
+    p: GeneratorParams, x_left: float, y_center: float,
+    travel_to_fn, print_f: int,
+) -> list[str]:
+    """Gefülltes Rechteck links neben dem Pattern (Asymmetrie-Anker).
+
+    x_left = linke Außenkante des Rechtecks (Frame-Innenkante = bx0+margin).
+    y_center = vertikale Mitte des Rechtecks (Chevron-Reihenmitte = py0+dy).
+
+    Der Marker besteht aus n_lines vertikalen Linien im Abstand line_width,
+    abwechselnd nach oben / nach unten gezeichnet (Boustrophedon). Jede Linie
+    hat die Länge anchor_marker_height.
+    """
+    lw = _line_width(p)
+    y_low = y_center - p.anchor_marker_height / 2
+    y_high = y_center + p.anchor_marker_height / 2
+    e_v = _extrusion(p.anchor_marker_height, lw, p.layer_height,
+                     p.filament_diameter, p.extrusion_multiplier)
+    out: list[str] = []
+    n_lines = max(1, int(round(p.anchor_marker_width / lw)))
+    out.extend(travel_to_fn(x_left, y_low))
+    nach_oben = True
+    for i in range(n_lines):
+        x = x_left + i * lw
+        if nach_oben:
+            out.append(f"G1 X{_fmt(x)} Y{_fmt(y_high)} "
+                       f"E{_fmt_e(e_v)} F{print_f}")
+        else:
+            out.append(f"G1 X{_fmt(x)} Y{_fmt(y_low)} "
+                       f"E{_fmt_e(e_v)} F{print_f}")
+        nach_oben = not nach_oben
+    return out
+
+
+def _pa_labels_block(
+    p: GeneratorParams, pa_values: list[float], px0: float,
+    label_y_top: float, group_advance: float,
+) -> list[str]:
+    """Hochkant rotierte PA-Labels auf der Top-Bar.
+
+    Ein Label pro Chevron-Gruppe. Position: über dem Chevron, label_y_top
+    ist die Y-Koordinate der oberen Glyph-Kante (label läuft nach unten,
+    weil rotation=90).
+    """
+    out: list[str] = []
+    for j, pa in enumerate(pa_values):
+        # X-Mitte der Chevron-Gruppe j.
+        gx_center = px0 + j * group_advance + (
+            (p.wall_count - 1) * _wall_x_offset(p) + _chevron_deltas(p)[0]
+        ) / 2
+        # Bei rotation=90 ist der Cursor-Anker die linke obere Ecke
+        # der ersten Glyphe. Wir möchten das Label horizontal an der
+        # Chevron-Mitte zentriert — die rotierte Glyph-Höhe wird nach
+        # rechts in X gerendert, also Start x = gx_center -
+        # label_glyph_height/2.
+        x_start = gx_center - p.label_glyph_height / 2
+        out.extend(render_label_gcode(
+            text=_fmt(pa),
+            x=x_start, y=label_y_top,
+            glyph_height=p.label_glyph_height,
+            glyph_width=p.label_glyph_width,
+            glyph_gap=p.label_glyph_gap,
+            line_width=_line_width(p),
+            layer_height=p.layer_height,
+            filament_diameter=p.filament_diameter,
+            extrusion_multiplier=p.extrusion_multiplier,
+            print_speed=p.speed_print,
+            travel_speed=p.speed_travel,
+            rotation=90,
+        ))
+    return out
+
+
+def _header_labels_block(
+    p: GeneratorParams, x_start: float, y_top: float,
+) -> list[str]:
+    """Speed/Accel-Header: 2 hochkant rotierte Spalten links der PA-Labels.
+
+    Spalte 1 zeigt speed_print (immer), Spalte 2 zeigt accel (nur wenn > 0).
+    Die Glyph-Höhe ist etwas größer als bei PA-Labels (header_glyph_height
+    vs. label_glyph_height), um einen visuellen Header-Effekt zu erzeugen.
+    Bei accel=0 entfällt die Accel-Spalte — "0" als Beschleunigung wäre
+    irreführend (kein Velocity-Limit gesetzt).
+    """
+    out: list[str] = []
+    # Spalte 1: Speed (immer vorhanden)
+    out.extend(render_label_gcode(
+        text=_fmt(p.speed_print),
+        x=x_start, y=y_top,
+        glyph_height=p.header_glyph_height,
+        glyph_width=p.header_glyph_width,
+        glyph_gap=p.label_glyph_gap,
+        line_width=_line_width(p),
+        layer_height=p.layer_height,
+        filament_diameter=p.filament_diameter,
+        extrusion_multiplier=p.extrusion_multiplier,
+        print_speed=p.speed_print,
+        travel_speed=p.speed_travel,
+        rotation=90,
+    ))
+    # Spalte 2: Accel (nur wenn > 0 — "0" wäre irreführend)
+    if p.accel > 0:
+        x_col2 = x_start + p.header_glyph_height + p.header_column_spacing
+        out.extend(render_label_gcode(
+            text=_fmt(p.accel),
+            x=x_col2, y=y_top,
+            glyph_height=p.header_glyph_height,
+            glyph_width=p.header_glyph_width,
+            glyph_gap=p.label_glyph_gap,
+            line_width=_line_width(p),
+            layer_height=p.layer_height,
+            filament_diameter=p.filament_diameter,
+            extrusion_multiplier=p.extrusion_multiplier,
+            print_speed=p.speed_print,
+            travel_speed=p.speed_travel,
+            rotation=90,
+        ))
+    return out
+
+
 def generate(params: GeneratorParams) -> str:
     """Erzeugt den vollständigen PA-Pattern-GCode als String."""
     p = params
@@ -185,14 +354,20 @@ def generate(params: GeneratorParams) -> str:
     pattern_w = (
         (len(pa_values) - 1) * adv + (p.wall_count - 1) * wall_off + dx
     )
-    pattern_h = 2 * dy
+    chevron_h = 2 * dy
+    # pattern_h umfasst: Top-Bar + Trennzone + Chevron-Band
+    # (Vorbereitung für Top-Bar-Emit in Task 6)
+    pattern_h = p.top_bar_height + p.chevron_band_gap + chevron_h
     margin = 4.0
     bx0 = p.bed_x / 2 - (pattern_w + 2 * margin) / 2
     by0 = p.bed_y / 2 - (pattern_h + 2 * margin) / 2
     bx1 = bx0 + pattern_w + 2 * margin
     by1 = by0 + pattern_h + 2 * margin
-    px0 = bx0 + margin  # Start-X des ersten Chevrons
-    py0 = by0 + margin  # Start-Y (untere Arm-Enden)
+    px0 = bx0 + margin            # Start-X des ersten Chevrons
+    py0 = by0 + margin            # untere Arm-Enden, wie bisher
+    # Top-Bar-Y-Bereich (für späteren Helper in Task 6):
+    top_bar_y_low = by1 - margin - p.top_bar_height
+    top_bar_y_high = by1 - margin
 
     def travel_to(x: float, y: float) -> list[str]:
         """Travel mit Retract+De-Retract (Ellis-Stil)."""
@@ -208,6 +383,7 @@ def generate(params: GeneratorParams) -> str:
         f"extrusion_multiplier={p.extrusion_multiplier}",
         f"; retract_distance={p.retract_distance} "
         f"purge_length={p.purge_length}",
+        f"; speed_print={p.speed_print} accel={p.accel}",
         # Klipper-PRINT_START erhaelt die Temperaturen als Parameter und
         # uebernimmt das Heizen (Bett-Pre-Heat waehrend Homing/QGL etc.).
         _format_start(p),
@@ -215,6 +391,14 @@ def generate(params: GeneratorParams) -> str:
         "M83",
         "G92 E0",
     ]
+
+    # Beschleunigung als Test-Parameter setzen (Klipper-Idiom).
+    # Mit accel=0 wird das übersprungen — dann gilt der Drucker-Default
+    # bzw. was PRINT_START gesetzt hat.
+    if p.accel > 0:
+        out.append(
+            f"SET_VELOCITY_LIMIT ACCEL={_fmt(p.accel)} "
+            f"ACCEL_TO_DECEL={_fmt(p.accel / 2)}")
 
     # Lüfter für die erste Layer (PLA: 0; PETG/ABS: konfigurierbar)
     if p.fan_speed_layer1 > 0:
@@ -259,6 +443,20 @@ def generate(params: GeneratorParams) -> str:
         # Lüfter nach Layer 1 auf den normalen Wert umschalten
         if layer == 1 and p.fan_speed != p.fan_speed_layer1:
             out.append(f"M106 S{round(p.fan_speed * 255)}")
+        # Top-Bar in jedem Layer (CV-Anker für orientation.py).
+        out.extend(_top_bar_block(
+            p, bx0 + margin, bx1 - margin,
+            top_bar_y_low, top_bar_y_high,
+            travel_to, print_f,
+        ))
+        # Anker-Marker links neben dem ersten Chevron.
+        # x_left = Frame-Innenkante (bx0 + margin); y_center =
+        # Chevron-Mitte (zwischen py0 und py0 + 2*dy).
+        chevron_center_y = py0 + dy
+        out.extend(_anchor_marker_block(
+            p, bx0 + margin, chevron_center_y,
+            travel_to, print_f,
+        ))
         for j, pa in enumerate(pa_values):
             out.append(f"M117 PA {_fmt(pa)}")
             out.append(f"{set_pa_prefix}{_fmt(pa)}")
@@ -276,6 +474,31 @@ def generate(params: GeneratorParams) -> str:
                     f"G1 X{_fmt(sx)} Y{_fmt(py0 + 2 * dy)} "
                     f"E{_fmt_e(e_arm)} F{print_f}"
                 )
+
+        # Labels nur in oberster Layer (sitzen als Relief auf der Top-Bar).
+        if layer == p.num_layers - 1:
+            # Label-Y-Top = obere Top-Bar-Innenkante (oben in der Bar,
+            # Labels laufen nach unten in die Bar hinein).
+            label_y_top = top_bar_y_high - 0.5  # 0.5 mm Padding zum oberen Rand
+            # Speed/Accel-Header VOR den PA-Labels (ganz links auf der Top-Bar).
+            # 0.5 mm Padding zur Frame-Innenkante (bx0 + margin).
+            header_x_start = bx0 + margin + 0.5
+            out.extend(_header_labels_block(
+                p, header_x_start, label_y_top,
+            ))
+            # PA-Labels beginnen nach den Header-Spalten + Trenn-Lücke.
+            # 2 Header-Spalten × header_glyph_height + header_column_spacing
+            # + header_to_labels_gap. Dadurch verschieben sich die PA-Labels
+            # nach rechts — sie stehen nicht mehr exakt über den Chevrons,
+            # sondern um pa_labels_x_offset nach rechts versetzt (gewollt:
+            # der Header braucht Platz links).
+            pa_labels_x_offset = (
+                2 * p.header_glyph_height + p.header_column_spacing
+                + p.header_to_labels_gap
+            )
+            out.extend(_pa_labels_block(
+                p, pa_values, px0 + pa_labels_x_offset, label_y_top, adv,
+            ))
 
     # End-Sequenz: Retract, Z-Raise, optionaler Cooldown (Sicherheits-
     # netz; viele PRINT_END-Macros machen das selbst — dann

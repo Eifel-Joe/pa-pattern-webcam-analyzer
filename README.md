@@ -150,6 +150,24 @@ PA_CALIBRATE PA_START=0.0 PA_END=0.08 PA_STEP=0.005 TEMP=215 BED_TEMP=60 FLOW=1.
 PA_CALIBRATE PA_START=0.0 PA_END=0.08 PA_STEP=0.005 TEMP=240 BED_TEMP=80 FLOW=1.0 FAN=0.3
 ```
 
+**Optional: Test-Parameter überschreiben**
+
+`SPEED` (mm/s) und `ACCEL` (mm/s²) sind optionale Macro-Parameter:
+
+```
+PA_CALIBRATE SPEED=180 ACCEL=3000
+```
+
+Beide Werte werden zusätzlich oben auf das Pattern aufgedruckt
+(hochkant rotiert auf der Top-Bar) — dadurch dokumentiert sich der
+Druck selbst (Reproduzierbarkeit). Defaults: `speed_print = 100 mm/s`,
+`accel = 2000 mm/s²` (konservativ für die breite Hobby-Drucker-Basis).
+
+Für dauerhafte Override-Werte (z.B. wenn dein Drucker durchgehend
+schneller fährt) trage sie in eine optionale `[generator]`-Sektion
+von `pa_analyzer.conf` ein — siehe `pa_analyzer.example.conf` für ein
+Beispiel. Override-Hierarchie: **CLI > Macro > Config > Code-Default**.
+
 ## Nutzung der CLI (eigenständig)
 
 ```bash

@@ -18,26 +18,17 @@ Hinweis auf den Zeitpunkt der Umsetzung.
 
 ## Generator
 
-### [demnächst] Druck-Geschwindigkeit und Beschleunigung als Parameter
+### [erledigt] Druck-Geschwindigkeit und Beschleunigung als Parameter
 
-Aktuell hardcoded in `GeneratorParams`:
-- `speed_print = 60 mm/s` (`F3600`)
-- `speed_travel = 120 mm/s` (`F7200`)
-- `speed_purge = 25 mm/s` (`F1500`)
-- **Beschleunigung wird gar nicht emittiert** — der Drucker nutzt
-  `printer.cfg`-Default oder was `PRINT_START` setzt.
-
-Problem: Pressure-Advance reagiert primär auf Beschleunigungs-Änderungen.
-Der bei 60 mm/s ermittelte Wert ist nicht 1:1 auf reale Drucke bei z.B.
-200 mm/s übertragbar. OrcaSlicer-PA-Tool und Andrew Ellis' Tool erlauben
-beides pro Lauf zu setzen.
-
-**Umsetzung:**
-- `--speed` / `SPEED=` im Macro (Druck-Geschwindigkeit, Default 60).
-- Optional `--accel` / `ACCEL=` — emittiert `M204 S<accel>` oder
-  `SET_VELOCITY_LIMIT ACCEL=<n>` im Header.
-- Defaults überschreibbar via `[generator]`-Sektion in `pa_analyzer.conf`
-  (siehe nächster Punkt).
+Behoben in Commit `4829bf1` (CLI), `ce3b0d3` (Macro), `1ac781c` (Config)
+auf Branch `feature/pattern-markierungen-speed-accel` (24.05.2026).
+Speed (`--speed` / `SPEED=`) und Accel (`--accel` / `ACCEL=`) sind
+jetzt CLI-, Macro- und Config-Parameter. Accel wird als
+`SET_VELOCITY_LIMIT ACCEL=<n> ACCEL_TO_DECEL=<n/2>` vor dem Pattern
+emittiert. Beide Werte werden zusätzlich als hochkant rotierte Labels
+auf der Top-Bar mitgedruckt (Reproduzierbarkeit). Defaults konservativ:
+100 mm/s und 2000 mm/s². Override-Hierarchie:
+CLI > Macro > `[generator]`-Sektion in `pa_analyzer.conf` > Code-Default.
 
 ### [mittel] Rahmen berührt Chevrons (3-Linien-Frame statt geschlossenem Rechteck)
 
@@ -69,6 +60,12 @@ bei jedem `PA_CALIBRATE`-Aufruf mitgeben — was das Macro nicht macht.
 beliebigen GeneratorParams-Feldern. CLI-Argumente überschreiben Config,
 Config überschreibt GeneratorParams-Defaults. Synergie mit dem
 Speed/Accel-TODO oben.
+
+**Update 24.05.2026 (Commit `1ac781c`):** Die `[generator]`-Sektion
+existiert jetzt als Extension-Point, mit `speed_print` und `accel`
+als ersten freigegebenen Feldern. Weitere `GeneratorParams`-Felder
+können nach demselben Schema (`_get_float`-Helper in `load_config`)
+nachgezogen werden, wenn Bedarf entsteht.
 
 ---
 

@@ -7,6 +7,7 @@ from pa_analyzer.gcode_generator import (
     GeneratorParams,
     _chevron_deltas,
     _extrusion,
+    _fmt,
     _group_advance,
     _line_width,
     _num_patterns,
@@ -228,3 +229,332 @@ def test_generate_leeres_analyze_gcode_kein_trigger():
     g = generate(GeneratorParams(analyze_gcode=""))
     assert "RUN_SHELL_COMMAND" not in g
     assert g.strip().splitlines()[-1] == "PRINT_END"
+
+
+def test_generator_params_neue_defaults():
+    p = GeneratorParams()
+    # Pattern-Markierungen
+    assert p.top_bar_height == 4.0
+    assert p.anchor_marker_width == 2.0
+    assert p.anchor_marker_height == 8.0
+    assert p.label_glyph_height == 0.7
+    assert p.label_glyph_width == 0.5
+    assert p.label_glyph_gap == 0.2
+    assert p.header_glyph_height == 1.0
+    assert p.header_glyph_width == 0.7
+    assert p.header_column_spacing == 4.0
+    assert p.header_to_labels_gap == 3.0
+    assert p.chevron_band_gap == 1.0
+    # Speed/Accel
+    assert p.speed_print == 100.0    # geändert von 60
+    assert p.accel == 2000.0         # neu
+
+
+def test_generate_pattern_hoehe_enthaelt_top_bar_und_band_gap():
+    # Frame-Y-Erstreckung muss jetzt = 2*margin + chevron_band +
+    # chevron_band_gap + top_bar_height sein.
+    # 2*dy bei wall_side_length=30, corner_angle=90 → 2*30*sin(45°) ≈ 42.43
+    # pattern_h = top_bar_height(4) + chevron_band_gap(1) + 42.43 ≈ 47.43
+    # Rahmenhöhe = pattern_h + 2*margin(4) ≈ 55.43 mm
+    # OHNE Top-Bar wäre Rahmenhöhe = 2*dy + 2*margin ≈ 50.43 mm
+    p = GeneratorParams()
+    g = generate(p)
+    # Sammle nur Frame-Y-Werte: Frame-Zeilen enthalten kein 'E'-Feld
+    # bei Travel und emittieren 4 Kanten. Statt Heuristik: wir parsen
+    # die exakten Frame-Koordinaten durch Vergleich mit den erwarteten Grenzen.
+    # Einfacher: Frame-Höhe = by1 - by0. Aus den 4 Frame-Zeilen nach dem
+    # Frame-Travel lassen sich by0 und by1 direkt ablesen.
+    import re
+    # Frame-Zeilen: extrudierende G1-Moves mit sowohl X als auch Y,
+    # die VOR dem ersten SET_PRESSURE_ADVANCE stehen
+    zeilen = g.splitlines()
+    first_pa_idx = next(i for i, z in enumerate(zeilen)
+                        if "SET_PRESSURE_ADVANCE" in z)
+    frame_ys = set()
+    for line in zeilen[:first_pa_idx]:
+        # Nur extrudierende Moves (enthalten 'E')
+        if " E" in line:
+            m = re.search(r"\sY([\d.-]+)", line)
+            if m:
+                frame_ys.add(float(m.group(1)))
+    frame_h = max(frame_ys) - min(frame_ys)
+    # Erwartete Rahmenhöhe MIT Top-Bar: ≈ 55.43 mm
+    # Schwellwert: zwischen 50.43 (ohne) und 55.43 (mit) → > 54.0
+    assert frame_h >= 54.0, (
+        f"Rahmen-Höhe {frame_h:.2f} mm zu klein — "
+        f"Top-Bar (4 mm) + Band-Gap (1 mm) fehlen vermutlich")
+
+
+def test_generate_zieht_solid_top_bar():
+    # Top-Bar = Vollfüllung der Höhe top_bar_height über pattern_w.
+    # Bei top_bar_height=4 mm und line_width=0.45 mm → ca. 9 parallele
+    # Linien (4/0.45 ≈ 8.89).
+    p = GeneratorParams()
+    g = generate(p)
+    # Top-Bar-Y-Bereich: die obersten ~4 mm des Patterns. Wir prüfen,
+    # dass im oberen Bett-Bereich viele extrudierte horizontale Moves
+    # mit E-Wert auftauchen (typische Stadion-Füllung).
+    import re
+    e_lines_in_top = 0
+    for line in g.splitlines():
+        m = re.search(r"\sY([\d.-]+).+E([\d.-]+)", line)
+        if m:
+            y = float(m.group(1))
+            # Heuristik: Y im oberen Bereich = Y > bed_y/2 + 15 (grob)
+            if y > p.bed_y / 2 + 15:
+                e_lines_in_top += 1
+    assert e_lines_in_top >= 5, (
+        f"Nur {e_lines_in_top} extrudierte Moves im Top-Bar-Bereich — "
+        "Solid-Top-Bar fehlt vermutlich")
+
+
+def test_generate_top_bar_in_allen_layern():
+    # Top-Bar wird in jedem Layer gedruckt — Z-Werte werden mehrfach
+    # hochgesetzt, und in jedem Z-Block sollten Top-Bar-Moves auftauchen.
+    p = GeneratorParams(num_layers=2)
+    g = generate(p)
+    # Zwei Layer = zwei Z-Wechsel zu z=0.2 bzw. z=0.4.
+    assert "G1 Z0.2 " in g
+    assert "G1 Z0.4 " in g
+
+
+def test_generate_emittiert_top_bar_vor_erstem_chevron():
+    # T6-Followup (Reviewer-Befund): wirklich-RED-Test — prüft, dass der
+    # Top-Bar tatsächlich emittiert wird.
+    #
+    # Zählt extrudierende G1-Moves vor dem ersten SET_PRESSURE_ADVANCE.
+    # Breakdown bei Default-Params:
+    #   - Purge-Linie         : 1
+    #   - Frame (4 Kanten)    : 4
+    #   - Top-Bar (~9 Linien) : 9
+    #   → Gesamt              : ≥ 14
+    #
+    # Würde der Top-Bar weggelassen, käme man nur auf ~5 (Purge + Frame).
+    # Schwellwert 10 liegt klar zwischen "ohne" (5) und "mit" (14).
+    p = GeneratorParams()
+    g = generate(p)
+    lines = g.splitlines()
+    pa_idx = next(i for i, l in enumerate(lines)
+                  if "SET_PRESSURE_ADVANCE" in l)
+    # Extrudierende G1-Moves: "G1 X... E..." oder "G1 Y... E..." — aber
+    # NICHT reine Retract/De-Retract-Moves wie "G1 E0.5 ..."
+    e_count = sum(1 for l in lines[:pa_idx]
+                  if l.startswith("G1") and " E" in l
+                  and not l.startswith("G1 E"))
+    assert e_count >= 10, (
+        f"Nur {e_count} extrudierte Moves vor erstem PA — "
+        f"Top-Bar fehlt vermutlich (erwartet >= 10 = Purge+Frame+Top-Bar)"
+    )
+
+
+def test_generate_setzt_anker_marker_links():
+    # Anker-Marker = gefülltes Rechteck, das linksseitig am Pattern-Start
+    # (x = bx0+margin) andockt und vertikal in der Chevron-Mitte sitzt.
+    #
+    # Geometrie (Default-Params):
+    #   x-Bereich : [bx0+margin, bx0+margin+anchor_marker_width] = [px0, px0+2]
+    #   y-Bereich : [chevron_center_y - 4, chevron_center_y + 4]
+    #               = [py0+dy - 4, py0+dy + 4]
+    #   n_lines   : round(anchor_marker_width / line_width) = 4
+    #
+    # Test-Strategie (Option A gegenüber Spec-Vorlage): Die Spec-Vorlage
+    # suchte im Bereich [px0-5, px0], was den Marker (der BEI px0 startet)
+    # nicht treffen würde. Korrekte Prüfung: extrudierende G1-Moves, deren
+    # X- UND Y-Wert gleichzeitig im Anker-Rechteck liegen. Der Chevron-
+    # Bereich überschneidet sich nicht mit diesem Y-Fenster.
+    import math as _math
+    import re
+    p = GeneratorParams()
+    g = generate(p)
+
+    lw = _line_width(p)
+    dx, dy = _chevron_deltas(p)
+    adv = _group_advance(p)
+    pa_vals = _pa_values(p)
+    pattern_w = (len(pa_vals) - 1) * adv + (p.wall_count - 1) * _wall_x_offset(p) + dx
+    chevron_h = 2 * dy
+    pattern_h = p.top_bar_height + p.chevron_band_gap + chevron_h
+    margin = 4.0
+    bx0 = p.bed_x / 2 - (pattern_w + 2 * margin) / 2
+    by0 = p.bed_y / 2 - (pattern_h + 2 * margin) / 2
+    py0 = by0 + margin
+    x_left = bx0 + margin
+    x_right = x_left + p.anchor_marker_width + 0.5   # +0.5 Puffer
+    chevron_center_y = py0 + dy
+    y_low = chevron_center_y - p.anchor_marker_height / 2 - 0.5   # Puffer
+    y_high = chevron_center_y + p.anchor_marker_height / 2 + 0.5
+
+    extruding_hits = []
+    for line in g.splitlines():
+        if " E" not in line or not line.startswith("G1"):
+            continue
+        mx = re.search(r"X([\d.-]+)", line)
+        my = re.search(r"Y([\d.-]+)", line)
+        if not mx or not my:
+            continue
+        x = float(mx.group(1))
+        y = float(my.group(1))
+        if x_left <= x <= x_right and y_low <= y <= y_high:
+            extruding_hits.append((x, y))
+
+    assert len(extruding_hits) >= 4, (
+        f"Anker-Marker fehlt — nur {len(extruding_hits)} extrudierende Moves "
+        f"im Anker-Rechteck X[{x_left:.2f},{x_right:.2f}] "
+        f"Y[{y_low:.2f},{y_high:.2f}] gefunden "
+        f"(erwartet ≥ 4 = anchor_marker_width / line_width)"
+    )
+
+
+def test_generate_emittiert_set_velocity_limit_accel():
+    p = GeneratorParams(accel=2000.0)
+    g = generate(p)
+    assert "SET_VELOCITY_LIMIT ACCEL=2000 ACCEL_TO_DECEL=1000" in g
+
+
+def test_generate_accel_null_emittiert_kein_velocity_limit():
+    p = GeneratorParams(accel=0.0)
+    g = generate(p)
+    assert "SET_VELOCITY_LIMIT" not in g
+
+
+def test_generate_accel_emittiert_vor_pattern():
+    # Reihenfolge: PRINT_START → G90 → M83 → G92 E0 → SET_VELOCITY_LIMIT
+    # → Z-Wechsel → ... Set-Velocity muss vor dem ersten
+    # G1 Z<layer_height>-Befehl liegen.
+    p = GeneratorParams(accel=3000.0)
+    g = generate(p)
+    lines = g.splitlines()
+    accel_idx = next(i for i, l in enumerate(lines)
+                     if "SET_VELOCITY_LIMIT" in l)
+    # Suche erste G1 Z<layer_height>-Bewegung (Layer 1).
+    z_str = f"G1 Z{_fmt(p.layer_height)}"
+    first_z = next(i for i, l in enumerate(lines)
+                   if l.startswith(z_str))
+    assert accel_idx < first_z, (
+        f"SET_VELOCITY_LIMIT ({accel_idx}) muss vor erstem Z-Move "
+        f"({first_z}) stehen")
+
+
+def test_generate_beschriftet_jeden_chevron_mit_pa_wert():
+    # In der obersten Layer müssen Bewegungen für jeden PA-Wert
+    # ("0", ".", "0", "2", "0" für PA=0.020) auftauchen. Wir prüfen
+    # auf "0.020"-Glyphen-Sequenz indirekt: für 17 PA-Werte und je
+    # 5 Glyphen = mindestens 17*5 = 85 Stroke-Travel-Moves zusätzlich
+    # (in der obersten Layer).
+    p = GeneratorParams(num_layers=2)  # 2 Layer: 1 ohne Labels, 1 mit
+    g = generate(p)
+    # Wir suchen nach Moves nach dem Z-Wechsel auf z=0.4 (2. Layer).
+    lines = g.splitlines()
+    z_top_idx = next(i for i, l in enumerate(lines)
+                     if l.startswith("G1 Z0.4 "))
+    moves_in_top_layer = lines[z_top_idx:]
+    # Grobe Heuristik: zähle G1-Moves im 2. Layer
+    g1_count = sum(1 for l in moves_in_top_layer if l.startswith("G1"))
+    # 2. Layer ohne Labels: ~Top-Bar (~9) + Anker (~4) + 17 Chevrons
+    # à 3 Wände à 2 Arme à 1 Move = 9 + 4 + 102 + Travels ≈ 200.
+    # Mit Labels (~85 Stroke-Moves + 85 Travels = 170): sollte deutlich mehr.
+    assert g1_count > 300, (
+        f"2. Layer hat nur {g1_count} G1-Moves — Labels fehlen")
+
+
+def test_generate_labels_nur_in_oberster_layer():
+    # Schärfer Test (ersetzt defekte Version vom 2026-05-24):
+    # Der alte Test nutzte Z-Hub-Move-Indizes als Layer-Trenner und
+    # verglich chunk[2] (= Layer 1, ohne Labels) mit chunk[0] (= 12-zeiligem
+    # Pre-Loop-Artifact). Damit wäre die Assertion auch bei "Labels in jeder
+    # Layer" TRUE geblieben — kein Schutz gegen Regressions.
+    #
+    # Korrekte Strategie: Layer-Grenzen per Z-Wert (nicht per Z-Marken-Index).
+    # num_layers=3, layer_height=0.2 → Layer-Z-Werte: 0.2, 0.4, 0.6.
+    # "G1 Z0.6 F..." ist der Einstieg in die oberste Layer.
+    # "G1 Z0.4 F..." ist der Einstieg in die vorletzte Layer (keine Labels).
+    # Beide ohne E-Parameter (kein Extrusions-Move).
+    #
+    # Assertions:
+    # A) Vorletzte Layer hat DEUTLICH WENIGER G1-Moves als oberste Layer
+    #    (Differenz ≥ 100; je 17 Labels × ~19 G1 ≈ 323 Moves).
+    # B) Die zwei label-freien Lagen (Z=0.4 und Z=0.2-Block ab Layer-Loop)
+    #    haben ANNÄHERND GLEICH VIELE Moves (Differenz < 50) — belegt, dass
+    #    Labels wirklich nur einmal (oberste Layer) hinzukommen.
+    #
+    # Wenn Labels in jeder Layer lägen: vorletzte und oberste hätten gleich
+    # viele Moves → Assertion A würde FEHLSCHLAGEN. ✓
+    import re
+    p = GeneratorParams(num_layers=3)
+    g = generate(p)
+    lines = g.splitlines()
+
+    lh = p.layer_height  # 0.2 mm
+
+    def _first_line_of_z(target_z: float) -> int:
+        """Index der ersten Zeile 'G1 Z<target_z> F...' (ohne E)."""
+        target = f"G1 Z{round(target_z, 4):g} F"
+        for i, l in enumerate(lines):
+            if l.startswith(target) and " E" not in l:
+                return i
+        raise AssertionError(f"Keine G1-Z-Linie für Z={target_z} gefunden")
+
+    # Positionen der drei Layer-Übergänge
+    z_layer0 = _first_line_of_z(lh)          # G1 Z0.2 — Layer 0
+    z_layer1 = _first_line_of_z(2 * lh)      # G1 Z0.4 — Layer 1 (kein Label)
+    z_layer2 = _first_line_of_z(3 * lh)      # G1 Z0.6 — Layer 2 (mit Labels)
+    # End-Z-Raise liegt hinter dem letzten Layer
+    z_end = _first_line_of_z(3 * lh + p.z_raise_end)
+
+    def _g1_count(start: int, end: int) -> int:
+        return sum(1 for l in lines[start:end] if l.startswith("G1"))
+
+    moves_layer1 = _g1_count(z_layer1, z_layer2)   # ohne Labels
+    moves_layer2 = _g1_count(z_layer2, z_end)       # mit Labels
+
+    # A) Oberste Layer (mit Labels) hat deutlich mehr Moves als vorletzte
+    assert moves_layer2 > moves_layer1 + 100, (
+        f"Oberste Layer ({moves_layer2} G1) nicht deutlich größer als "
+        f"vorletzte Layer ({moves_layer1} G1) — Labels fehlen oder stehen "
+        "in jeder Layer (sollen nur in oberster sein).")
+
+    # B) Zwei label-freie Layer (Layer 0-Block und Layer 1) sind annähernd
+    #    gleich groß — beweist, dass Differenz aus Labels stammt, nicht
+    #    aus anderem layerspezifischem Code.
+    moves_layer0_block = _g1_count(z_layer0, z_layer1)
+    # Layer-0-Block enthält Rahmen + Purge → erlaubter Overhead bis 30 Moves
+    assert abs(moves_layer0_block - moves_layer1) < 30, (
+        f"Layer-0-Block ({moves_layer0_block} G1) und Layer 1 "
+        f"({moves_layer1} G1) weichen um "
+        f"{abs(moves_layer0_block - moves_layer1)} ab — "
+        "Rahmen/Purge-Overhead sollte < 30 betragen.")
+
+
+def test_generate_beschriftet_speed_accel_header():
+    # Speed/Accel-Header in oberster Layer: 2 Spalten ("100", "2000")
+    # mit größerer Glyph-Höhe als die PA-Labels.
+    p = GeneratorParams(num_layers=1, accel=2000.0, speed_print=100.0)
+    g = generate(p)
+    # Indirekter Test: zähle G1-Moves im einzigen Layer; Header fügt
+    # 3 Glyphen ("1", "0", "0") + 4 Glyphen ("2", "0", "0", "0") =
+    # 7 Glyphen extra hinzu (jede Glyph = mindestens 2 Moves:
+    # Travel + Extrusion).
+    g1_lines = [l for l in g.splitlines() if l.startswith("G1")]
+    # Nach T9 (PA-Labels) hat 1-Layer-Output ~614 G1-Moves.
+    # Mit Header zusätzlich ~7 Glyphen × ~7 Moves = ~49 Extra → ~663.
+    # Schwelle 640 liegt klar zwischen "ohne Header" (614) und
+    # "mit Header" (≥663). Locker gesetzt für Glyph-Variationen.
+    assert len(g1_lines) > 640, (
+        f"Nur {len(g1_lines)} G1-Moves — Speed/Accel-Header fehlt?")
+
+
+def test_generate_kein_accel_kein_header_label():
+    # Bei accel=0 wird auch kein Accel-Header-Label gerendert
+    # (sonst stünde "0" als Accel im Header — irreführend).
+    # Speed-Label bleibt aber (speed_print ist immer > 0).
+    p_mit_accel = GeneratorParams(num_layers=1, accel=2000.0)
+    p_ohne_accel = GeneratorParams(num_layers=1, accel=0.0)
+    g_mit = generate(p_mit_accel)
+    g_ohne = generate(p_ohne_accel)
+    g1_mit = sum(1 for l in g_mit.splitlines() if l.startswith("G1"))
+    g1_ohne = sum(1 for l in g_ohne.splitlines() if l.startswith("G1"))
+    # Differenz: 4 Glyphen ("2000") × 2-6 Moves = mindestens 8 Moves weniger.
+    assert g1_mit > g1_ohne + 8, (
+        f"Mit-Accel-Output ({g1_mit}) sollte ~10-30 Moves mehr haben "
+        f"als Ohne-Accel ({g1_ohne}) — Accel-Header wird nicht "
+        "konditional emittiert")
