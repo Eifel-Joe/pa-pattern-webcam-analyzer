@@ -35,10 +35,12 @@ fi
 echo "  Abhängigkeiten installiert (opencv-python-headless, numpy, pillow-heif)"
 
 # 3. gcode_shell_command prüfen (Soll-Kriterium, kein harter Abbruch).
-# Standard-Pfad: ~/klipper/klippy/extras/gcode_shell_command.py — vom
-# $HOME aus auf Tiefe 5. maxdepth 5 deckt das ab; weniger erzeugt
-# falsch-positive "nicht gefunden"-Meldungen.
-if find "${HOME}" -maxdepth 5 -path "*klippy/extras*" -name "gcode_shell_command.py" 2>/dev/null | grep -q .; then
+# Direkter Standard-Pfad-Check (~/klipper/klippy/extras/...). Vermeidet
+# den find-Pipefail-Pitfall: `find` returnt 1 bei Permission-Denied auf
+# z.B. ~/.cache/mesa_shader_cache, was mit `set -o pipefail` die ganze
+# Pipeline `find ... | grep -q .` als "nicht gefunden" interpretiert,
+# obwohl die Datei tatsächlich vorhanden ist.
+if [ -f "${HOME}/klipper/klippy/extras/gcode_shell_command.py" ]; then
     echo "  gcode_shell_command — gefunden"
 else
     echo "  HINWEIS: gcode_shell_command nicht gefunden — für die Klipper-" >&2
@@ -66,6 +68,15 @@ if [ -n "${KLIPPER_CFG_DIR}" ]; then
     if [ -f "${PRINTER_CFG}" ]; then
         if grep -q '^\[include pa_calibrate.cfg\]' "${PRINTER_CFG}"; then
             echo "    [include pa_calibrate.cfg] schon in printer.cfg"
+        # WICHTIG: Klipper hängt einen SAVE_CONFIG-Block (#*#-Lines mit
+        # PID-Werten, Bed-Mesh etc.) ans Ende von printer.cfg. [include]-
+        # Statements NACH dem SAVE_CONFIG-Marker brechen den Autosave-
+        # Merge — z.B. verliert [heater_bed] dann seinen `control = pid`-
+        # Eintrag und Klipper startet mit Fehler. Daher: vor dem Marker
+        # einsetzen, wenn vorhanden; sonst ans Ende anhängen.
+        elif grep -q '^#\*#.*SAVE_CONFIG' "${PRINTER_CFG}"; then
+            sed -i '/^#\*#.*SAVE_CONFIG/i [include pa_calibrate.cfg]' "${PRINTER_CFG}"
+            echo "    [include pa_calibrate.cfg] vor SAVE_CONFIG-Marker eingefügt"
         else
             printf '\n[include pa_calibrate.cfg]\n' >> "${PRINTER_CFG}"
             echo "    [include pa_calibrate.cfg] zu printer.cfg hinzugefügt"

@@ -34,9 +34,24 @@ def test_install_sh_kopiert_macro_und_aktualisiert_printer_cfg():
     assert "grep" in text  # Idempotenz-Check
 
 
-def test_install_sh_gcode_shell_command_find_maxdepth_korrekt():
-    # Standard-Pfad /home/pi/klipper/klippy/extras/gcode_shell_command.py
-    # liegt auf Tiefe 5 ab $HOME. maxdepth muss >= 5 sein, sonst
-    # falsch-positive "nicht gefunden"-Meldung trotz Standard-Install.
+def test_install_sh_gcode_shell_command_direkter_pfad_check():
+    # Direkter -f-Check auf den Standard-Klipper-Pfad statt `find`-Pipe.
+    # `find ... | grep -q .` mit `set -o pipefail` interpretiert exit-1
+    # von find (z.B. wegen Permission-Denied auf ~/.cache/...) als
+    # "nicht gefunden", obwohl die Datei vorhanden ist — daher direkter
+    # Pfad-Check ohne Pipe.
     text = _SCRIPT.read_text(encoding="utf-8")
-    assert "maxdepth 5" in text
+    assert 'klipper/klippy/extras/gcode_shell_command.py' in text
+    assert '[ -f "${HOME}/klipper' in text
+
+
+def test_install_sh_include_vor_save_config_marker():
+    # Klipper haengt einen SAVE_CONFIG-Block (#*#-Lines, autosave fuer
+    # PID/Bed-Mesh) ans Ende von printer.cfg. Includes NACH dem Marker
+    # brechen den Autosave-Merge — install.sh muss den Marker erkennen
+    # und davor einsetzen (sed -i ... /i COMMAND).
+    text = _SCRIPT.read_text(encoding="utf-8")
+    assert "SAVE_CONFIG" in text
+    assert "sed -i" in text
+    # Insert-Before-Befehl der GNU-sed:
+    assert "i [include pa_calibrate.cfg]" in text
