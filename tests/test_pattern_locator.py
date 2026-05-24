@@ -54,3 +54,58 @@ def test_locate_quad_wirft_bei_leerer_maske():
     leer = np.zeros((200, 200), np.uint8)
     with pytest.raises(ValueError):
         locate_quad(leer)
+
+
+# ============================================================================
+# Robustheits-Tests für locate_quad (Pipeline-Diagnose 2026-05-24):
+# Bei v2-Pattern (dünne Chevron-Linien) trennt sich Top-Bar in der Maske
+# häufig von den Chevrons in eigene Connected-Components. Die alte
+# "nur größte Component"-Logik nahm dann nur den Top-Bar als Quad —
+# Chevrons komplett außerhalb → Pipeline-Output Müll. Fix: alle
+# Components > MIN_AREA kombinieren.
+# ============================================================================
+
+def test_locate_quad_umfasst_alle_pattern_komponenten():
+    """Wenn Maske mehrere getrennte Filament-Regionen enthält
+    (Top-Bar getrennt von Chevrons-Region), muss der Quad ALLE
+    erfassen, nicht nur die größte."""
+    mask = np.zeros((400, 600), np.uint8)
+    # Top-Bar: dicker Block oben
+    mask[50:100, 100:500] = 255   # 50px × 400px = 20000 px (große Komponente)
+    # Chevron-Region: dünnere getrennte Region darunter
+    # NICHT verbunden mit Top-Bar (Lücke bei y=100..150)
+    mask[150:300, 120:480] = 255  # 150px × 360px = 54000 px
+
+    # Mit der alten Logik (nur größte Komponente) wäre der Quad nur die
+    # 54000-px-Region. Mit Fix muss der Quad BEIDE Regionen umfassen.
+    quad = locate_quad(mask)
+    # Min/Max-Y des Quads müssen die Spanne 50..300 abdecken (mit
+    # kleiner Toleranz für Closing/Rotation).
+    y_min = float(quad[:, 1].min())
+    y_max = float(quad[:, 1].max())
+    assert y_min < 80, (
+        f"Quad-Y-min={y_min:.0f} — Top-Bar (y=50..100) nicht erfasst")
+    assert y_max > 290, (
+        f"Quad-Y-max={y_max:.0f} — Chevron-Region (y=150..300) "
+        "nicht voll erfasst")
+
+
+def test_locate_quad_ignoriert_kleine_rausch_pixel():
+    """Vereinzelte Rausch-Pixel (z.B. Bett-Reflexionen unten links im
+    Webcam-Bild — siehe diag_02_mask_with_quad.jpg) dürfen die
+    Bounding-Box NICHT verzerren."""
+    mask = np.zeros((400, 600), np.uint8)
+    # Hauptpattern in der Mitte
+    mask[150:250, 200:400] = 255  # 100×200 = 20000 px
+    # Kleine Rauschen unten-links (z.B. Bett-Glitter-Artefakt)
+    mask[380:390, 10:20] = 255   # 10×10 = 100 px (sehr klein)
+
+    quad = locate_quad(mask)
+    # Quad sollte NUR das Hauptpattern umfassen, nicht den
+    # weit-entfernten Rauschen-Bereich
+    x_min = float(quad[:, 0].min())
+    y_max = float(quad[:, 1].max())
+    assert x_min > 100, (
+        f"Quad-X-min={x_min:.0f} — Rauschen bei x=10 fälschlich erfasst")
+    assert y_max < 320, (
+        f"Quad-Y-max={y_max:.0f} — Rauschen bei y=380 fälschlich erfasst")

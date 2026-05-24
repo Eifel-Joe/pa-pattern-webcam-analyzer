@@ -44,36 +44,54 @@ def filament_mask(img: np.ndarray) -> np.ndarray:
 
 
 def locate_quad(mask: np.ndarray) -> np.ndarray:
-    """4 Eckpunkte der größten zusammenhängenden Filament-Region.
+    """4 Eckpunkte um ALLE Filament-Regionen des Patterns.
 
     Reihenfolge: im Uhrzeigersinn ab der Ecke mit der kleinsten
     Koordinatensumme. Über `minAreaRect` — robust gegen die
     Chevron-Einkerbungen der Box-Kante (anders als convexHull).
+
+    Pipeline-Diagnose 2026-05-24: bei v2-Pattern (dünne Chevron-
+    Linien) trennt sich Top-Bar in der Maske oft von den Chevrons
+    in eigene Connected-Components. Die alte Logik "nur größte
+    Component" verlor dann die Chevrons → minAreaRect umfasste
+    nur den Top-Bar → Pipeline-Output Müll bei kleinen Bild-
+    Schwankungen. Fix: alle Components mit Area >= MIN_AREA
+    kombinieren, dann minAreaRect über die kombinierten Pixel.
+    Kleine Rausch-Komponenten (Bett-Glitter, Stringing-Reste)
+    werden über MIN_AREA herausgefiltert.
     """
     opened = cv2.morphologyEx(
         mask, cv2.MORPH_OPEN,
         cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)))
     n, lbl, stats, _ = cv2.connectedComponentsWithStats(opened)
-    if n > 1:
-        biggest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
-        opened = (lbl == biggest).astype(np.uint8) * 255
+    # Schwelle für "ernsthafte" Komponente: 0.1 % der Bildfläche,
+    # mindestens 200 px. Filtert Bett-Reflexionen, Stringing-Reste,
+    # Pixel-Rauschen weg — behält alles was als echtes Pattern-Teil
+    # erkennbar ist.
+    min_area = max(200, mask.size // 1000)
+    qualifying = [i for i in range(1, n)
+                  if stats[i, cv2.CC_STAT_AREA] >= min_area]
+    if not qualifying:
+        raise ValueError(
+            "locate_quad: keine Filament-Region gefunden — Bild zu "
+            "dunkel oder Filamentfarbe nicht erkennbar?")
+    # Combined Mask: alle qualifizierten Components zusammen.
+    combined = np.isin(lbl, qualifying).astype(np.uint8) * 255
     # Close-Kernel skaliert mit der Bildbreite (Spike: Breite/120);
     # `| 1` erzwingt eine ungerade Größe (von morphologyEx verlangt).
     ks = max(7, mask.shape[1] // 120) | 1
     closed = cv2.morphologyEx(
-        opened, cv2.MORPH_CLOSE,
+        combined, cv2.MORPH_CLOSE,
         cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (ks, ks)))
-    cnts, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL,
-                               cv2.CHAIN_APPROX_SIMPLE)
-    if not cnts:
-        raise ValueError(
-            "locate_quad: keine Filament-Region gefunden — Bild zu "
-            "dunkel oder Filamentfarbe nicht erkennbar?")
-    big = max(cnts, key=cv2.contourArea)
-    pts = cv2.boxPoints(cv2.minAreaRect(big)).astype(np.float64)
-    center = pts.mean(axis=0)
-    order = np.argsort(np.arctan2(pts[:, 1] - center[1],
-                                  pts[:, 0] - center[0]))
-    pts = pts[order]
-    start = int(np.argmin(pts.sum(axis=1)))
-    return np.roll(pts, -start, axis=0).astype(np.float32)
+    # Statt findContours + max-Contour: direkt minAreaRect über
+    # alle weißen Pixel der kombinierten Maske — umfasst garantiert
+    # ALLE qualifizierten Pattern-Teile.
+    ys, xs = np.where(closed > 0)
+    pts = np.column_stack([xs, ys]).astype(np.float32)
+    box = cv2.boxPoints(cv2.minAreaRect(pts)).astype(np.float64)
+    center = box.mean(axis=0)
+    order = np.argsort(np.arctan2(box[:, 1] - center[1],
+                                  box[:, 0] - center[0]))
+    box = box[order]
+    start = int(np.argmin(box.sum(axis=1)))
+    return np.roll(box, -start, axis=0).astype(np.float32)
