@@ -6,7 +6,13 @@ Hinweis auf den Zeitpunkt der Umsetzung.
 
 > Status-Kürzel: **[demnächst]** = nach dem ersten Live-Test sinnvoll,
 > **[mittel]** = Komfort/Aufräumarbeit, **[später]** = nice-to-have oder
-> Fallback, der erst bei konkretem Bedarf gebaut wird (YAGNI).
+> Fallback, der erst bei konkretem Bedarf gebaut wird (YAGNI),
+> **[erledigt]** = abgeschlossen (Commit-SHA als Beleg dazu).
+>
+> **Pflege:** Living Document — neue Punkte werden hier ergänzt, sobald
+> sie aufkommen; abgearbeitete bleiben mit `[erledigt]`-Marker stehen
+> (nicht entfernen), idealerweise mit Commit-SHA. So bildet die Datei
+> nebenbei ein Mini-Changelog der nicht-feature-zentralen Arbeit.
 
 ---
 
