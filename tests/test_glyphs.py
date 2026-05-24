@@ -1,7 +1,7 @@
 """Unit-Tests für das Glyphen-Modul (Stroke-Font für Pattern-Labels)."""
 import pytest
 
-from pa_analyzer.glyphs import GLYPHS
+from pa_analyzer.glyphs import GLYPHS, render_label_gcode
 
 
 def test_glyphs_enthaelt_alle_ziffern_und_punkt():
@@ -50,9 +50,6 @@ def test_glyph_punkt_ist_kurze_linie():
     # Beide Punkte am unteren Rand (y == 0)
     assert strokes[0][0][1] == 0.0
     assert strokes[0][1][1] == 0.0
-
-
-from pa_analyzer.glyphs import render_label_gcode
 
 
 def _druck_args() -> dict:
@@ -133,3 +130,26 @@ def test_render_label_rotation_invalid_wirft_value_error():
     with pytest.raises(ValueError):
         render_label_gcode("1", x=0.0, y=0.0, rotation=45,
                             **_druck_args())
+
+
+def test_render_label_rotation_90_zwei_strokes_vollstaendig():
+    # "8" hat 2 Strokes (Rechteck + Mittellinie). Beide müssen bei
+    # rotation=90 rotiert werden — die for-stroke-Schleife darf nicht
+    # vergessen, die Rotation auch im 2. Stroke anzuwenden.
+    # Erwartung: 2 Travel-Moves (einer je Stroke-Anfang) im Output.
+    lines = render_label_gcode("8", x=0.0, y=0.0, rotation=90,
+                                **_druck_args())
+    travel_moves = [z for z in lines
+                    if z.startswith("G1") and " E" not in z]
+    assert len(travel_moves) >= 2, (
+        f"Erwartet >= 2 Travel-Moves für 2 Strokes, got: {travel_moves}")
+    # Zusätzlich: alle X-Werte sollten >= 0 sein (Glyphe wird nach
+    # rechts aufgebaut bei rotation=90), keine negative X.
+    import re
+    for line in lines:
+        m = re.search(r"X([\d.-]+)", line)
+        if m:
+            x = float(m.group(1))
+            assert x >= 0, (
+                f"Negativer X bei rotation=90 in '{line}' — Rotation "
+                f"des 2. Strokes ist evtl. ausgelassen")

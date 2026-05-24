@@ -72,7 +72,10 @@ def render_label_gcode(
 
     Position (`x`, `y`) ist die linke untere Ecke der ersten Glyphe in
     mm (Druckbett-Koordinaten). Bei `rotation=0` läuft der Text nach
-    rechts; bei `rotation=90` läuft er nach unten (siehe Task 3).
+    rechts (Standard-Leserichtung); bei `rotation=90` läuft er nach
+    unten (hochkant gestapelte Glyphen, Lesrichtung von oben nach
+    unten — passend für vertikale Beschriftung auf der Top-Bar des
+    Patterns).
 
     Zwischen Strokes innerhalb einer Glyphe wird Travel ohne Extrusion
     gemacht (Pen-Up). Retract wird in dieser Funktion bewusst nicht
