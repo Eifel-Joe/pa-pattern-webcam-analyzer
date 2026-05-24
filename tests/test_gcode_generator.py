@@ -315,3 +315,32 @@ def test_generate_top_bar_in_allen_layern():
     # Zwei Layer = zwei Z-Wechsel zu z=0.2 bzw. z=0.4.
     assert "G1 Z0.2 " in g
     assert "G1 Z0.4 " in g
+
+
+def test_generate_emittiert_top_bar_vor_erstem_chevron():
+    # T6-Followup (Reviewer-Befund): wirklich-RED-Test — prüft, dass der
+    # Top-Bar tatsächlich emittiert wird.
+    #
+    # Zählt extrudierende G1-Moves vor dem ersten SET_PRESSURE_ADVANCE.
+    # Breakdown bei Default-Params:
+    #   - Purge-Linie         : 1
+    #   - Frame (4 Kanten)    : 4
+    #   - Top-Bar (~9 Linien) : 9
+    #   → Gesamt              : ≥ 14
+    #
+    # Würde der Top-Bar weggelassen, käme man nur auf ~5 (Purge + Frame).
+    # Schwellwert 10 liegt klar zwischen "ohne" (5) und "mit" (14).
+    p = GeneratorParams()
+    g = generate(p)
+    lines = g.splitlines()
+    pa_idx = next(i for i, l in enumerate(lines)
+                  if "SET_PRESSURE_ADVANCE" in l)
+    # Extrudierende G1-Moves: "G1 X... E..." oder "G1 Y... E..." — aber
+    # NICHT reine Retract/De-Retract-Moves wie "G1 E0.5 ..."
+    e_count = sum(1 for l in lines[:pa_idx]
+                  if l.startswith("G1") and " E" in l
+                  and not l.startswith("G1 E"))
+    assert e_count >= 10, (
+        f"Nur {e_count} extrudierte Moves vor erstem PA — "
+        f"Top-Bar fehlt vermutlich (erwartet >= 10 = Purge+Frame+Top-Bar)"
+    )
