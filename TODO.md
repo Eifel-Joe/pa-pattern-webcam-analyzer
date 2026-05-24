@@ -30,25 +30,23 @@ auf der Top-Bar mitgedruckt (Reproduzierbarkeit). Defaults konservativ:
 100 mm/s und 2000 mm/s². Override-Hierarchie:
 CLI > Macro > `[generator]`-Sektion in `pa_analyzer.conf` > Code-Default.
 
-### [mittel] Rahmen berührt Chevrons (3-Linien-Frame statt geschlossenem Rechteck)
+### [erledigt] Rahmen berührt Chevrons (3-Linien-Frame statt geschlossenem Rechteck)
 
-Aktuell zieht der Generator einen geschlossenen 4-seitigen Rahmen um
-das Chevron-Pattern mit etwas Abstand. Resultat beim ersten Live-Test:
-Rahmen und Chevrons sind beim Ablösen vom Bett **getrennte
-Einzelteile** — fummelig zu entfernen.
+Behoben auf Branch `feature/pattern-robustheit-v2` (Commits `50fd5b9`
+Generator-Refactor + `3afb5e5` Parser-Frame-Marker), 24.05.2026.
+Frame ist jetzt 3-Linien-"["-Form: links + unten + Top-Bar als
+implizite Oberkante. KEIN expliziter Frame-Right — Chevron-Spitzen
+bilden den rechten Rand. `margin = 0` sodass Frame die Chevrons
+direkt berührt. Top-Bar berührt Chevrons oben (`chevron_band_gap = 0`).
+Anker-Marker direkt an Frame-Linkskante angedockt. Damit ist der
+ganze Druck ein zusammenhängendes Teil.
 
-**Vorschlag:** Rahmen als 3-Linien-"["-Form (oder "U") drucken, sodass
-die Chevron-Arm-Enden den Rahmen **berühren**. Der ganze Druck wird
-damit ein zusammenhängendes Teil und lässt sich in einem Stück
-abnehmen.
+Spec: `docs/specs/2026-05-24-pattern-markierungen-und-speed-accel.md`.
+Layout: `docs/specs/2026-05-24-pattern-markierungen-layout.svg` (v2).
 
-**Umsetzung:** In `gcode_generator.py` die `_frame_block()`-Geometrie
-auf 3 Seiten + passende Chevron-Position-Berechnung anpassen, damit
-die Spitzen genau am Rahmen ansetzen. Tests für Rahmen-Form + Kontakt-
-Punkt-Koordinaten ergänzen.
-
-Vom User am 2026-05-24 nach dem ersten Live-Test gewünscht ("Lässt
-sich dann besser vom Druckbett entfernen").
+Parser bekam einen Frame-Marker-Kommentar als saubere Lösung, da
+das offene "["-Frame nicht als 4-Linien-Rechteck detektierbar wäre
+(Backward-Compat zur 4-Linien-Detection erhalten).
 
 ### [mittel] Generator-Defaults aus der `pa_analyzer.conf` ziehen
 

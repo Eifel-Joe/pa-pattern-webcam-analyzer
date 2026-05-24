@@ -1,193 +1,211 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1300 760" font-family="Helvetica, Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1300 800" font-family="Helvetica, Arial, sans-serif">
   <!-- Hintergrund: Druckbett (helles Beige) -->
-  <rect width="1300" height="760" fill="#e6d8b8"/>
+  <rect width="1300" height="800" fill="#e6d8b8"/>
 
   <!-- Titel -->
-  <text x="650" y="34" text-anchor="middle" font-size="22" font-weight="bold" fill="#222">PA-Pattern-Layout — Markierungen + Speed/Accel (Approach A)</text>
-  <text x="650" y="56" text-anchor="middle" font-size="13" fill="#555">Schematisch · 17 Chevrons · PA 0.000–0.080 · Schritt 0.005 · 3 verschachtelte Wände pro Chevron · Speed/Accel-Header links</text>
+  <text x="650" y="34" text-anchor="middle" font-size="22" font-weight="bold" fill="#222">PA-Pattern-Layout v2 — 3-Linien-Frame + Robusteres Pattern</text>
+  <text x="650" y="56" text-anchor="middle" font-size="13" fill="#555">Update nach Live-Test 2 (Konfidenz 31 %, visuell zu dünn) · Top-Bar 12 mm · Labels 2.5 mm · margin = 0 · Frame "[" ohne rechts</text>
 
   <!-- =================== PATTERN =================== -->
   <g transform="translate(150, 110)">
 
-    <!-- Frame (4-seitige Outline) -->
-    <rect x="0" y="0" width="1000" height="500" fill="none" stroke="#b22" stroke-width="3"/>
+    <!-- Frame (3-Linien-"["-Form: NUR links + unten; oben implizit durch Top-Bar) -->
+    <!-- Frame links -->
+    <line x1="0" y1="0" x2="0" y2="540" stroke="#b22" stroke-width="3"/>
+    <!-- Frame unten -->
+    <line x1="0" y1="540" x2="1000" y2="540" stroke="#b22" stroke-width="3"/>
+    <!-- KEIN Frame rechts! Chevron-Spitzen bilden den rechten Rand. -->
 
-    <!-- Solid-Top-Bar: Vollfüllung der oberen ~30 % -->
-    <rect x="0" y="0" width="1000" height="150" fill="#c33"/>
+    <!-- Solid-Top-Bar: nimmt jetzt ~25 % der Höhe (statt 30 %) — bei 12 mm von 54 mm pattern_h -->
+    <!-- Höhe von 130 px (proportional zu 12 mm bei 54 mm Pattern → ca. 22 % der 540 px Pattern) -->
+    <!-- Aber zeichnerisch breiter darstellen für die Visualisierung -->
+    <rect x="0" y="0" width="1000" height="200" fill="#c33"/>
 
     <!-- Optische Trennlinie zwischen Header-Spalten und PA-Werten -->
-    <line x1="135" y1="20" x2="135" y2="130" stroke="#fff" stroke-width="1.2" stroke-dasharray="3,3" opacity="0.65"/>
+    <line x1="170" y1="20" x2="170" y2="180" stroke="#fff" stroke-width="1.5" stroke-dasharray="4,4" opacity="0.7"/>
 
-    <!-- Speed/Accel-Header: 2 Spalten am Anfang der Top-Bar (hochkant) -->
-    <g font-size="20" font-weight="bold" fill="#fff" text-anchor="middle" font-family="Consolas, monospace">
-      <text x="45"  y="75" transform="rotate(90, 45, 75)">100</text>
-      <text x="95"  y="75" transform="rotate(90, 95, 75)">2000</text>
+    <!-- Speed/Accel-Header: 2 Spalten am Anfang der Top-Bar (hochkant), größer als v1 -->
+    <g font-size="36" font-weight="bold" fill="#fff" text-anchor="middle" font-family="Consolas, monospace">
+      <text x="55"  y="100" transform="rotate(90, 55, 100)">180</text>
+      <text x="115" y="100" transform="rotate(90, 115, 100)">3000</text>
     </g>
 
-    <!-- PA-Labels auf der Top-Bar, hochkant (90° rotiert, Lesrichtung oben → unten) -->
-    <g font-size="14" font-weight="bold" fill="#fff" text-anchor="middle" font-family="Consolas, monospace">
-      <text x="170" y="75" transform="rotate(90, 170, 75)">0.000</text>
-      <text x="220" y="75" transform="rotate(90, 220, 75)">0.005</text>
-      <text x="270" y="75" transform="rotate(90, 270, 75)">0.010</text>
-      <text x="320" y="75" transform="rotate(90, 320, 75)">0.015</text>
-      <text x="370" y="75" transform="rotate(90, 370, 75)">0.020</text>
-      <text x="420" y="75" transform="rotate(90, 420, 75)">0.025</text>
-      <text x="470" y="75" transform="rotate(90, 470, 75)">0.030</text>
-      <text x="520" y="75" transform="rotate(90, 520, 75)">0.035</text>
-      <text x="570" y="75" transform="rotate(90, 570, 75)">0.040</text>
-      <text x="620" y="75" transform="rotate(90, 620, 75)">0.045</text>
-      <text x="670" y="75" transform="rotate(90, 670, 75)">0.050</text>
-      <text x="720" y="75" transform="rotate(90, 720, 75)">0.055</text>
-      <text x="770" y="75" transform="rotate(90, 770, 75)">0.060</text>
-      <text x="820" y="75" transform="rotate(90, 820, 75)">0.065</text>
-      <text x="870" y="75" transform="rotate(90, 870, 75)">0.070</text>
-      <text x="920" y="75" transform="rotate(90, 920, 75)">0.075</text>
-      <text x="970" y="75" transform="rotate(90, 970, 75)">0.080</text>
+    <!-- PA-Labels auf der Top-Bar, hochkant (90° rotiert) — größer als v1 -->
+    <g font-size="24" font-weight="bold" fill="#fff" text-anchor="middle" font-family="Consolas, monospace">
+      <text x="200" y="100" transform="rotate(90, 200, 100)">0.000</text>
+      <text x="248" y="100" transform="rotate(90, 248, 100)">0.005</text>
+      <text x="296" y="100" transform="rotate(90, 296, 100)">0.010</text>
+      <text x="344" y="100" transform="rotate(90, 344, 100)">0.015</text>
+      <text x="392" y="100" transform="rotate(90, 392, 100)">0.020</text>
+      <text x="440" y="100" transform="rotate(90, 440, 100)">0.025</text>
+      <text x="488" y="100" transform="rotate(90, 488, 100)">0.030</text>
+      <text x="536" y="100" transform="rotate(90, 536, 100)">0.035</text>
+      <text x="584" y="100" transform="rotate(90, 584, 100)">0.040</text>
+      <text x="632" y="100" transform="rotate(90, 632, 100)">0.045</text>
+      <text x="680" y="100" transform="rotate(90, 680, 100)">0.050</text>
+      <text x="728" y="100" transform="rotate(90, 728, 100)">0.055</text>
+      <text x="776" y="100" transform="rotate(90, 776, 100)">0.060</text>
+      <text x="824" y="100" transform="rotate(90, 824, 100)">0.065</text>
+      <text x="872" y="100" transform="rotate(90, 872, 100)">0.070</text>
+      <text x="920" y="100" transform="rotate(90, 920, 100)">0.075</text>
+      <text x="968" y="100" transform="rotate(90, 968, 100)">0.080</text>
     </g>
 
-    <!-- Anker-Marker (kleines Rechteck angedockt an Frame-Linkskante) -->
-    <rect x="5" y="295" width="22" height="80" fill="#c33"/>
+    <!-- Anker-Marker (kleines Rechteck angedockt direkt an Frame-Linkskante; margin=0) -->
+    <rect x="0" y="320" width="22" height="80" fill="#c33"/>
 
-    <!-- Chevrons: 17 Stück, jeweils mit 3 verschachtelten Wänden (Ellis-Stil) -->
-    <!-- Starten bei Pattern-X=170 (unter dem ersten PA-Label), Spacing 50px -->
-    <g stroke="#c33" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Chevrons: 17 Stück, jeweils mit 3 verschachtelten Wänden (Ellis-Stil), berühren Top-Bar oben und Frame unten -->
+    <!-- Y-Bereich 200..540 (= Top-Bar-Unter bis Frame-Unten, KEIN chevron_band_gap, KEIN margin) -->
+    <g stroke="#c33" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <!-- Chevron-Gruppen entlang X, ab x=200 (nach Header), 48px Spacing -->
       <!-- 0 (0.000) -->
-      <path d="M 173,195 L 203,335 L 173,475"/>
-      <path d="M 178,195 L 208,335 L 178,475"/>
-      <path d="M 183,195 L 213,335 L 183,475"/>
+      <path d="M 203,200 L 233,370 L 203,540"/>
+      <path d="M 208,200 L 238,370 L 208,540"/>
+      <path d="M 213,200 L 243,370 L 213,540"/>
       <!-- 1 (0.005) -->
-      <path d="M 223,195 L 253,335 L 223,475"/>
-      <path d="M 228,195 L 258,335 L 228,475"/>
-      <path d="M 233,195 L 263,335 L 233,475"/>
+      <path d="M 251,200 L 281,370 L 251,540"/>
+      <path d="M 256,200 L 286,370 L 256,540"/>
+      <path d="M 261,200 L 291,370 L 261,540"/>
       <!-- 2 (0.010) -->
-      <path d="M 273,195 L 303,335 L 273,475"/>
-      <path d="M 278,195 L 308,335 L 278,475"/>
-      <path d="M 283,195 L 313,335 L 283,475"/>
+      <path d="M 299,200 L 329,370 L 299,540"/>
+      <path d="M 304,200 L 334,370 L 304,540"/>
+      <path d="M 309,200 L 339,370 L 309,540"/>
       <!-- 3 (0.015) -->
-      <path d="M 323,195 L 353,335 L 323,475"/>
-      <path d="M 328,195 L 358,335 L 328,475"/>
-      <path d="M 333,195 L 363,335 L 333,475"/>
+      <path d="M 347,200 L 377,370 L 347,540"/>
+      <path d="M 352,200 L 382,370 L 352,540"/>
+      <path d="M 357,200 L 387,370 L 357,540"/>
       <!-- 4 (0.020) -->
-      <path d="M 373,195 L 403,335 L 373,475"/>
-      <path d="M 378,195 L 408,335 L 378,475"/>
-      <path d="M 383,195 L 413,335 L 383,475"/>
+      <path d="M 395,200 L 425,370 L 395,540"/>
+      <path d="M 400,200 L 430,370 L 400,540"/>
+      <path d="M 405,200 L 435,370 L 405,540"/>
       <!-- 5 (0.025) -->
-      <path d="M 423,195 L 453,335 L 423,475"/>
-      <path d="M 428,195 L 458,335 L 428,475"/>
-      <path d="M 433,195 L 463,335 L 433,475"/>
+      <path d="M 443,200 L 473,370 L 443,540"/>
+      <path d="M 448,200 L 478,370 L 448,540"/>
+      <path d="M 453,200 L 483,370 L 453,540"/>
       <!-- 6 (0.030) -->
-      <path d="M 473,195 L 503,335 L 473,475"/>
-      <path d="M 478,195 L 508,335 L 478,475"/>
-      <path d="M 483,195 L 513,335 L 483,475"/>
+      <path d="M 491,200 L 521,370 L 491,540"/>
+      <path d="M 496,200 L 526,370 L 496,540"/>
+      <path d="M 501,200 L 531,370 L 501,540"/>
       <!-- 7 (0.035) -->
-      <path d="M 523,195 L 553,335 L 523,475"/>
-      <path d="M 528,195 L 558,335 L 528,475"/>
-      <path d="M 533,195 L 563,335 L 533,475"/>
+      <path d="M 539,200 L 569,370 L 539,540"/>
+      <path d="M 544,200 L 574,370 L 544,540"/>
+      <path d="M 549,200 L 579,370 L 549,540"/>
       <!-- 8 (0.040) -->
-      <path d="M 573,195 L 603,335 L 573,475"/>
-      <path d="M 578,195 L 608,335 L 578,475"/>
-      <path d="M 583,195 L 613,335 L 583,475"/>
+      <path d="M 587,200 L 617,370 L 587,540"/>
+      <path d="M 592,200 L 622,370 L 592,540"/>
+      <path d="M 597,200 L 627,370 L 597,540"/>
       <!-- 9 (0.045) -->
-      <path d="M 623,195 L 653,335 L 623,475"/>
-      <path d="M 628,195 L 658,335 L 628,475"/>
-      <path d="M 633,195 L 663,335 L 633,475"/>
+      <path d="M 635,200 L 665,370 L 635,540"/>
+      <path d="M 640,200 L 670,370 L 640,540"/>
+      <path d="M 645,200 L 675,370 L 645,540"/>
       <!-- 10 (0.050) -->
-      <path d="M 673,195 L 703,335 L 673,475"/>
-      <path d="M 678,195 L 708,335 L 678,475"/>
-      <path d="M 683,195 L 713,335 L 683,475"/>
+      <path d="M 683,200 L 713,370 L 683,540"/>
+      <path d="M 688,200 L 718,370 L 688,540"/>
+      <path d="M 693,200 L 723,370 L 693,540"/>
       <!-- 11 (0.055) -->
-      <path d="M 723,195 L 753,335 L 723,475"/>
-      <path d="M 728,195 L 758,335 L 728,475"/>
-      <path d="M 733,195 L 763,335 L 733,475"/>
+      <path d="M 731,200 L 761,370 L 731,540"/>
+      <path d="M 736,200 L 766,370 L 736,540"/>
+      <path d="M 741,200 L 771,370 L 741,540"/>
       <!-- 12 (0.060) -->
-      <path d="M 773,195 L 803,335 L 773,475"/>
-      <path d="M 778,195 L 808,335 L 778,475"/>
-      <path d="M 783,195 L 813,335 L 783,475"/>
+      <path d="M 779,200 L 809,370 L 779,540"/>
+      <path d="M 784,200 L 814,370 L 784,540"/>
+      <path d="M 789,200 L 819,370 L 789,540"/>
       <!-- 13 (0.065) -->
-      <path d="M 823,195 L 853,335 L 823,475"/>
-      <path d="M 828,195 L 858,335 L 828,475"/>
-      <path d="M 833,195 L 863,335 L 833,475"/>
+      <path d="M 827,200 L 857,370 L 827,540"/>
+      <path d="M 832,200 L 862,370 L 832,540"/>
+      <path d="M 837,200 L 867,370 L 837,540"/>
       <!-- 14 (0.070) -->
-      <path d="M 873,195 L 903,335 L 873,475"/>
-      <path d="M 878,195 L 908,335 L 878,475"/>
-      <path d="M 883,195 L 913,335 L 883,475"/>
+      <path d="M 875,200 L 905,370 L 875,540"/>
+      <path d="M 880,200 L 910,370 L 880,540"/>
+      <path d="M 885,200 L 915,370 L 885,540"/>
       <!-- 15 (0.075) -->
-      <path d="M 923,195 L 953,335 L 923,475"/>
-      <path d="M 928,195 L 958,335 L 928,475"/>
-      <path d="M 933,195 L 963,335 L 933,475"/>
+      <path d="M 923,200 L 953,370 L 923,540"/>
+      <path d="M 928,200 L 958,370 L 928,540"/>
+      <path d="M 933,200 L 963,370 L 933,540"/>
       <!-- 16 (0.080) -->
-      <path d="M 973,195 L 1003,335 L 973,475"/>
-      <path d="M 978,195 L 1008,335 L 978,475"/>
-      <path d="M 983,195 L 1013,335 L 983,475"/>
+      <path d="M 971,200 L 1001,370 L 971,540"/>
+      <path d="M 976,200 L 1006,370 L 976,540"/>
+      <path d="M 981,200 L 1011,370 L 981,540"/>
     </g>
   </g>
 
   <!-- =================== ANNOTATIONEN =================== -->
   <g font-size="13" fill="#222">
 
-    <!-- "Frame" -->
+    <!-- "3-Linien-Frame" -->
     <line x1="80" y1="110" x2="148" y2="110" stroke="#222" stroke-width="1"/>
     <circle cx="148" cy="110" r="3" fill="#222"/>
-    <text x="75" y="114" text-anchor="end" font-weight="bold">Frame (4-seitig)</text>
-    <text x="75" y="130" text-anchor="end" fill="#555" font-size="11">durchgehende Outline</text>
+    <text x="75" y="114" text-anchor="end" font-weight="bold">Frame (3-Linien "[")</text>
+    <text x="75" y="130" text-anchor="end" fill="#555" font-size="11">links + unten · oben implizit</text>
+    <text x="75" y="144" text-anchor="end" fill="#555" font-size="11">durch Top-Bar, KEIN rechts</text>
 
     <!-- "Solid-Top-Bar" -->
-    <line x1="80" y1="170" x2="148" y2="170" stroke="#222" stroke-width="1"/>
-    <circle cx="148" cy="170" r="3" fill="#222"/>
-    <text x="75" y="174" text-anchor="end" font-weight="bold">Solid-Top-Bar</text>
-    <text x="75" y="190" text-anchor="end" fill="#555" font-size="11">Vollfüllung · ~30 % der Höhe</text>
-    <text x="75" y="204" text-anchor="end" fill="#555" font-size="11">in allen Layern → CV-Anker</text>
+    <line x1="80" y1="180" x2="148" y2="180" stroke="#222" stroke-width="1"/>
+    <circle cx="148" cy="180" r="3" fill="#222"/>
+    <text x="75" y="184" text-anchor="end" font-weight="bold">Solid-Top-Bar</text>
+    <text x="75" y="200" text-anchor="end" fill="#555" font-size="11">12 mm (v1: 4 mm) — v2 erhöht</text>
+    <text x="75" y="214" text-anchor="end" fill="#555" font-size="11">berührt Chevrons oben (gap=0)</text>
 
     <!-- "PA-Labels hochkant" -->
-    <line x1="80" y1="240" x2="148" y2="240" stroke="#222" stroke-width="1"/>
-    <line x1="148" y1="240" x2="320" y2="190" stroke="#222" stroke-width="1"/>
-    <circle cx="320" cy="190" r="3" fill="#222"/>
-    <text x="75" y="244" text-anchor="end" font-weight="bold">PA-Labels (hochkant)</text>
-    <text x="75" y="260" text-anchor="end" fill="#555" font-size="11">90° rotiert · auf Top-Bar</text>
-    <text x="75" y="274" text-anchor="end" fill="#555" font-size="11">in oberster Layer als Relief</text>
+    <line x1="80" y1="250" x2="148" y2="250" stroke="#222" stroke-width="1"/>
+    <line x1="148" y1="250" x2="320" y2="200" stroke="#222" stroke-width="1"/>
+    <circle cx="320" cy="200" r="3" fill="#222"/>
+    <text x="75" y="254" text-anchor="end" font-weight="bold">PA-Labels (hochkant)</text>
+    <text x="75" y="270" text-anchor="end" fill="#555" font-size="11">2.5 mm hoch (v1: 0.7 mm)</text>
+    <text x="75" y="284" text-anchor="end" fill="#555" font-size="11">lesbar bei Webcam-Auflösung</text>
 
     <!-- "Speed/Accel-Header" - links über die zwei ersten Spalten -->
-    <line x1="80" y1="310" x2="148" y2="310" stroke="#1668c2" stroke-width="1"/>
-    <line x1="148" y1="310" x2="240" y2="195" stroke="#1668c2" stroke-width="1"/>
-    <circle cx="240" cy="195" r="3" fill="#1668c2"/>
-    <text x="75" y="314" text-anchor="end" font-weight="bold" fill="#1668c2">Speed/Accel-Header</text>
-    <text x="75" y="330" text-anchor="end" fill="#1668c2" font-size="11">2 Spalten "180" / "3000"</text>
-    <text x="75" y="344" text-anchor="end" fill="#1668c2" font-size="11">mm/s und mm/s² (Defaults)</text>
+    <line x1="80" y1="320" x2="148" y2="320" stroke="#1668c2" stroke-width="1"/>
+    <line x1="148" y1="320" x2="240" y2="200" stroke="#1668c2" stroke-width="1"/>
+    <circle cx="240" cy="200" r="3" fill="#1668c2"/>
+    <text x="75" y="324" text-anchor="end" font-weight="bold" fill="#1668c2">Speed/Accel-Header</text>
+    <text x="75" y="340" text-anchor="end" fill="#1668c2" font-size="11">4 mm Glyphen (v1: 1 mm)</text>
+    <text x="75" y="354" text-anchor="end" fill="#1668c2" font-size="11">"180" / "3000"</text>
 
-    <!-- "Anker-Marker" -->
-    <line x1="80" y1="430" x2="148" y2="430" stroke="#222" stroke-width="1"/>
-    <line x1="148" y1="430" x2="170" y2="420" stroke="#222" stroke-width="1"/>
-    <circle cx="170" cy="420" r="3" fill="#222"/>
-    <text x="75" y="434" text-anchor="end" font-weight="bold">Anker-Marker</text>
-    <text x="75" y="450" text-anchor="end" fill="#555" font-size="11">eindeutige Links-Erkennung</text>
-    <text x="75" y="464" text-anchor="end" fill="#555" font-size="11">2 × 8 mm, an Frame-Links</text>
+    <!-- "Anker-Marker" - direkt am Frame-Left -->
+    <line x1="80" y1="440" x2="148" y2="440" stroke="#222" stroke-width="1"/>
+    <line x1="148" y1="440" x2="160" y2="460" stroke="#222" stroke-width="1"/>
+    <circle cx="160" cy="460" r="3" fill="#222"/>
+    <text x="75" y="444" text-anchor="end" font-weight="bold">Anker-Marker</text>
+    <text x="75" y="460" text-anchor="end" fill="#555" font-size="11">DIREKT an Frame-Left</text>
+    <text x="75" y="474" text-anchor="end" fill="#555" font-size="11">(margin=0, kein Padding)</text>
 
     <!-- "Chevrons" - rechts -->
-    <line x1="1225" y1="450" x2="1175" y2="450" stroke="#222" stroke-width="1"/>
-    <circle cx="1175" cy="450" r="3" fill="#222"/>
-    <text x="1230" y="454" font-weight="bold">Chevrons</text>
-    <text x="1230" y="470" fill="#555" font-size="11">17 Gruppen · 3 Wände</text>
-    <text x="1230" y="484" fill="#555" font-size="11">je PA-Wert eine Gruppe</text>
+    <line x1="1225" y1="500" x2="1175" y2="500" stroke="#222" stroke-width="1"/>
+    <circle cx="1175" cy="500" r="3" fill="#222"/>
+    <text x="1230" y="504" font-weight="bold">Chevrons (--walls=3)</text>
+    <text x="1230" y="520" fill="#555" font-size="11">jetzt konfigurierbar via</text>
+    <text x="1230" y="534" fill="#555" font-size="11">WALLS= / --walls</text>
+
+    <!-- "Chevron-Spitzen = rechter Rand" -->
+    <line x1="1225" y1="370" x2="1180" y2="370" stroke="#b22" stroke-width="1"/>
+    <circle cx="1180" cy="370" r="3" fill="#b22"/>
+    <text x="1230" y="374" font-weight="bold" fill="#b22">Chevron-Apex = rechter Rand</text>
+    <text x="1230" y="390" fill="#b22" font-size="11">kein expliziter Frame-Right!</text>
+    <text x="1230" y="404" fill="#b22" font-size="11">Pattern ist ein zusammen-</text>
+    <text x="1230" y="418" fill="#b22" font-size="11">hängendes Druckteil</text>
 
     <!-- "PA-Werte" - rechts oben -->
-    <line x1="1225" y1="170" x2="1175" y2="170" stroke="#222" stroke-width="1"/>
-    <circle cx="1175" cy="170" r="3" fill="#222"/>
-    <text x="1230" y="174" font-weight="bold">PA-Wert pro Chevron</text>
-    <text x="1230" y="190" fill="#555" font-size="11">"0.000" bis "0.080"</text>
-    <text x="1230" y="204" fill="#555" font-size="11">Schritt 0.005 → 17 Werte</text>
+    <line x1="1225" y1="200" x2="1175" y2="200" stroke="#222" stroke-width="1"/>
+    <circle cx="1175" cy="200" r="3" fill="#222"/>
+    <text x="1230" y="204" font-weight="bold">PA-Wert pro Chevron</text>
+    <text x="1230" y="220" fill="#555" font-size="11">"0.000" bis "0.080"</text>
+    <text x="1230" y="234" fill="#555" font-size="11">Schritt 0.005 → 17 Werte</text>
   </g>
 
   <!-- =================== MASS-LEGENDE UNTEN =================== -->
-  <g transform="translate(150, 640)" font-size="12" fill="#333">
-    <text x="0" y="0" font-weight="bold" fill="#222">Standard-Maße + neue Parameter (konfigurierbar via CLI, Macro, oder [generator]-Sektion in pa_analyzer.conf):</text>
-    <text x="0" y="20">• <tspan font-family="Consolas, monospace" fill="#444">top_bar_height</tspan> = 4 mm · Vollfüllung über volle Pattern-Breite</text>
-    <text x="0" y="38">• <tspan font-family="Consolas, monospace" fill="#444">label_glyph_height</tspan> = 0.7 mm · 5 Glyphen vertikal gestapelt ≈ 3.5 mm</text>
-    <text x="0" y="56">• <tspan font-family="Consolas, monospace" fill="#444">anchor_marker_size</tspan> = 2 × 8 mm · gefülltes Rechteck links</text>
+  <g transform="translate(150, 690)" font-size="12" fill="#333">
+    <text x="0" y="0" font-weight="bold" fill="#222">v2-Defaults (konfigurierbar via CLI, Macro, [generator] in pa_analyzer.conf):</text>
+    <text x="0" y="20">• <tspan font-family="Consolas, monospace" fill="#444">top_bar_height</tspan> = 12 mm (v1: 4) · Vollfüllung über Pattern-Breite</text>
+    <text x="0" y="38">• <tspan font-family="Consolas, monospace" fill="#444">label_glyph_height/width</tspan> = 2.5/1.5 mm (v1: 0.7/0.5)</text>
+    <text x="0" y="56">• <tspan font-family="Consolas, monospace" fill="#444">header_glyph_height/width</tspan> = 4.0/2.5 mm (v1: 1.0/0.7)</text>
+    <text x="0" y="74">• <tspan font-family="Consolas, monospace" fill="#444">margin</tspan> = 0 (v1: 4) · Frame berührt Chevrons direkt</text>
     <text x="500" y="20">• <tspan font-family="Consolas, monospace" fill="#1668c2" font-weight="bold">speed_print</tspan> = 100 mm/s · CLI: <tspan font-family="Consolas, monospace">--speed</tspan> · Macro: <tspan font-family="Consolas, monospace">SPEED=</tspan></text>
     <text x="500" y="38">• <tspan font-family="Consolas, monospace" fill="#1668c2" font-weight="bold">accel</tspan> = 2000 mm/s² · CLI: <tspan font-family="Consolas, monospace">--accel</tspan> · Macro: <tspan font-family="Consolas, monospace">ACCEL=</tspan></text>
-    <text x="500" y="56">• Emit als <tspan font-family="Consolas, monospace" fill="#444">SET_VELOCITY_LIMIT ACCEL=&lt;n&gt;</tspan> im GCode-Header</text>
+    <text x="500" y="56">• <tspan font-family="Consolas, monospace" fill="#1668c2" font-weight="bold">wall_count</tspan> = 3 (neu konfigurierbar) · CLI: <tspan font-family="Consolas, monospace">--walls</tspan> · Macro: <tspan font-family="Consolas, monospace">WALLS=</tspan></text>
+    <text x="500" y="74">• Frame als 3-Linien "[" · obere Frame-Linie kommt aus Top-Bar-Oberkante</text>
   </g>
 
   <!-- Footer -->
-  <text x="650" y="745" text-anchor="middle" font-size="11" fill="#888">docs/specs/2026-05-24-pattern-markierungen-layout.svg</text>
+  <text x="650" y="785" text-anchor="middle" font-size="11" fill="#888">docs/specs/2026-05-24-pattern-markierungen-layout.svg · v2 (Pattern-Robustheit nach Live-Test 2)</text>
 </svg>
