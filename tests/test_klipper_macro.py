@@ -28,3 +28,15 @@ def test_macro_uebergibt_filament_parameter():
     assert "--bed-temp" in text
     assert "--flow" in text
     assert "--fan" in text
+
+
+def test_macro_uebergibt_speed_und_accel():
+    # PA_CALIBRATE muss SPEED= und ACCEL= optional annehmen und an
+    # pa_generate weiterreichen. Leere Defaults verhindern, dass eine
+    # leere Klammer-Substitution dem CLI-Parser eine ungültige Zahl
+    # zuschickt.
+    text = _CFG.read_text(encoding="utf-8")
+    assert "params.SPEED" in text
+    assert "params.ACCEL" in text
+    assert "--speed" in text
+    assert "--accel" in text
