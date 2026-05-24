@@ -295,6 +295,7 @@ def generate(params: GeneratorParams) -> str:
         f"extrusion_multiplier={p.extrusion_multiplier}",
         f"; retract_distance={p.retract_distance} "
         f"purge_length={p.purge_length}",
+        f"; speed_print={p.speed_print} accel={p.accel}",
         # Klipper-PRINT_START erhaelt die Temperaturen als Parameter und
         # uebernimmt das Heizen (Bett-Pre-Heat waehrend Homing/QGL etc.).
         _format_start(p),
@@ -302,6 +303,14 @@ def generate(params: GeneratorParams) -> str:
         "M83",
         "G92 E0",
     ]
+
+    # Beschleunigung als Test-Parameter setzen (Klipper-Idiom).
+    # Mit accel=0 wird das übersprungen — dann gilt der Drucker-Default
+    # bzw. was PRINT_START gesetzt hat.
+    if p.accel > 0:
+        out.append(
+            f"SET_VELOCITY_LIMIT ACCEL={_fmt(p.accel)} "
+            f"ACCEL_TO_DECEL={_fmt(p.accel / 2)}")
 
     # Lüfter für die erste Layer (PLA: 0; PETG/ABS: konfigurierbar)
     if p.fan_speed_layer1 > 0:

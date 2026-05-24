@@ -7,6 +7,7 @@ from pa_analyzer.gcode_generator import (
     GeneratorParams,
     _chevron_deltas,
     _extrusion,
+    _fmt,
     _group_advance,
     _line_width,
     _num_patterns,
@@ -402,3 +403,33 @@ def test_generate_setzt_anker_marker_links():
         f"Y[{y_low:.2f},{y_high:.2f}] gefunden "
         f"(erwartet ≥ 4 = anchor_marker_width / line_width)"
     )
+
+
+def test_generate_emittiert_set_velocity_limit_accel():
+    p = GeneratorParams(accel=2000.0)
+    g = generate(p)
+    assert "SET_VELOCITY_LIMIT ACCEL=2000 ACCEL_TO_DECEL=1000" in g
+
+
+def test_generate_accel_null_emittiert_kein_velocity_limit():
+    p = GeneratorParams(accel=0.0)
+    g = generate(p)
+    assert "SET_VELOCITY_LIMIT" not in g
+
+
+def test_generate_accel_emittiert_vor_pattern():
+    # Reihenfolge: PRINT_START → G90 → M83 → G92 E0 → SET_VELOCITY_LIMIT
+    # → Z-Wechsel → ... Set-Velocity muss vor dem ersten
+    # G1 Z<layer_height>-Befehl liegen.
+    p = GeneratorParams(accel=3000.0)
+    g = generate(p)
+    lines = g.splitlines()
+    accel_idx = next(i for i, l in enumerate(lines)
+                     if "SET_VELOCITY_LIMIT" in l)
+    # Suche erste G1 Z<layer_height>-Bewegung (Layer 1).
+    z_str = f"G1 Z{_fmt(p.layer_height)}"
+    first_z = next(i for i, l in enumerate(lines)
+                   if l.startswith(z_str))
+    assert accel_idx < first_z, (
+        f"SET_VELOCITY_LIMIT ({accel_idx}) muss vor erstem Z-Move "
+        f"({first_z}) stehen")
