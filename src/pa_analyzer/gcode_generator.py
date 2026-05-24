@@ -16,6 +16,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
+from .glyphs import render_label_gcode
+
 
 @dataclass(frozen=True)
 class GeneratorParams:
@@ -244,6 +246,45 @@ def _anchor_marker_block(
     return out
 
 
+def _pa_labels_block(
+    p: GeneratorParams, pa_values: list[float], px0: float,
+    label_y_top: float, group_advance: float,
+) -> list[str]:
+    """Hochkant rotierte PA-Labels auf der Top-Bar.
+
+    Ein Label pro Chevron-Gruppe. Position: über dem Chevron, label_y_top
+    ist die Y-Koordinate der oberen Glyph-Kante (label läuft nach unten,
+    weil rotation=90).
+    """
+    out: list[str] = []
+    for j, pa in enumerate(pa_values):
+        # X-Mitte der Chevron-Gruppe j.
+        gx_center = px0 + j * group_advance + (
+            (p.wall_count - 1) * _wall_x_offset(p) + _chevron_deltas(p)[0]
+        ) / 2
+        # Bei rotation=90 ist der Cursor-Anker die linke obere Ecke
+        # der ersten Glyphe. Wir möchten das Label horizontal an der
+        # Chevron-Mitte zentriert — die rotierte Glyph-Höhe wird nach
+        # rechts in X gerendert, also Start x = gx_center -
+        # label_glyph_height/2.
+        x_start = gx_center - p.label_glyph_height / 2
+        out.extend(render_label_gcode(
+            text=_fmt(pa),
+            x=x_start, y=label_y_top,
+            glyph_height=p.label_glyph_height,
+            glyph_width=p.label_glyph_width,
+            glyph_gap=p.label_glyph_gap,
+            line_width=_line_width(p),
+            layer_height=p.layer_height,
+            filament_diameter=p.filament_diameter,
+            extrusion_multiplier=p.extrusion_multiplier,
+            print_speed=p.speed_print,
+            travel_speed=p.speed_travel,
+            rotation=90,
+        ))
+    return out
+
+
 def generate(params: GeneratorParams) -> str:
     """Erzeugt den vollständigen PA-Pattern-GCode als String."""
     p = params
@@ -386,6 +427,15 @@ def generate(params: GeneratorParams) -> str:
                     f"G1 X{_fmt(sx)} Y{_fmt(py0 + 2 * dy)} "
                     f"E{_fmt_e(e_arm)} F{print_f}"
                 )
+
+        # Labels nur in oberster Layer (sitzen als Relief auf der Top-Bar).
+        if layer == p.num_layers - 1:
+            # Label-Y-Top = obere Top-Bar-Innenkante (oben in der Bar,
+            # Labels laufen nach unten in die Bar hinein).
+            label_y_top = top_bar_y_high - 0.5  # 0.5 mm Padding zum oberen Rand
+            out.extend(_pa_labels_block(
+                p, pa_values, px0, label_y_top, adv,
+            ))
 
     # End-Sequenz: Retract, Z-Raise, optionaler Cooldown (Sicherheits-
     # netz; viele PRINT_END-Macros machen das selbst — dann

@@ -433,3 +433,57 @@ def test_generate_accel_emittiert_vor_pattern():
     assert accel_idx < first_z, (
         f"SET_VELOCITY_LIMIT ({accel_idx}) muss vor erstem Z-Move "
         f"({first_z}) stehen")
+
+
+def test_generate_beschriftet_jeden_chevron_mit_pa_wert():
+    # In der obersten Layer müssen Bewegungen für jeden PA-Wert
+    # ("0", ".", "0", "2", "0" für PA=0.020) auftauchen. Wir prüfen
+    # auf "0.020"-Glyphen-Sequenz indirekt: für 17 PA-Werte und je
+    # 5 Glyphen = mindestens 17*5 = 85 Stroke-Travel-Moves zusätzlich
+    # (in der obersten Layer).
+    p = GeneratorParams(num_layers=2)  # 2 Layer: 1 ohne Labels, 1 mit
+    g = generate(p)
+    # Wir suchen nach Moves nach dem Z-Wechsel auf z=0.4 (2. Layer).
+    lines = g.splitlines()
+    z_top_idx = next(i for i, l in enumerate(lines)
+                     if l.startswith("G1 Z0.4 "))
+    moves_in_top_layer = lines[z_top_idx:]
+    # Grobe Heuristik: zähle G1-Moves im 2. Layer
+    g1_count = sum(1 for l in moves_in_top_layer if l.startswith("G1"))
+    # 2. Layer ohne Labels: ~Top-Bar (~9) + Anker (~4) + 17 Chevrons
+    # à 3 Wände à 2 Arme à 1 Move = 9 + 4 + 102 + Travels ≈ 200.
+    # Mit Labels (~85 Stroke-Moves + 85 Travels = 170): sollte deutlich mehr.
+    assert g1_count > 300, (
+        f"2. Layer hat nur {g1_count} G1-Moves — Labels fehlen")
+
+
+def test_generate_labels_nur_in_oberster_layer():
+    # Bei num_layers=3 zählen wir G1-Move-Anzahl pro Layer.
+    # Layer 1 + 2 sollten gleich viele haben (nur Top-Bar + Anker +
+    # Chevrons). Layer 3 (oberste) hat zusätzlich Labels → deutlich mehr.
+    p = GeneratorParams(num_layers=3)
+    g = generate(p)
+    import re
+    lines = g.splitlines()
+    # Z-Hub-Moves zwischen Layern: F-Wert vorhanden, kein E
+    z_marks = []
+    for i, l in enumerate(lines):
+        m = re.match(r"^G1 Z([\d.-]+) F", l)
+        if m and " E" not in l:
+            z_marks.append((i, float(m.group(1))))
+    # z_marks = Liste der (index, z)-Tupel für die Z-Hub-Moves
+    # (mindestens 3 bei num_layers=3, evtl. plus End-Z-Raise)
+    assert len(z_marks) >= 3, (
+        f"Erwartet mindestens 3 Z-Hub-Moves, got: {len(z_marks)}")
+    layer_chunks = []
+    # Nimm nur die ersten 3 (die End-Z-Raise wäre die 4. wenn vorhanden)
+    for k in range(3):
+        start = z_marks[k][0]
+        end = z_marks[k+1][0] if k+1 < len(z_marks) else len(lines)
+        layer_chunks.append([l for l in lines[start:end]
+                              if l.startswith("G1")])
+    # layer_chunks[0] = Layer 1, [1] = Layer 2, [2] = Layer 3 (mit Labels)
+    assert len(layer_chunks[2]) > len(layer_chunks[0]) + 50, (
+        f"Oberste Layer ({len(layer_chunks[2])} G1) nicht deutlich "
+        f"größer als Layer 1 ({len(layer_chunks[0])} G1) — Labels "
+        "stehen wohl in jeder Layer (sollen aber nur in oberster).")
