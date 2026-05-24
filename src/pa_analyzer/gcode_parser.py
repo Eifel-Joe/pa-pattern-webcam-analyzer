@@ -218,6 +218,33 @@ def _rectangle_from_run(run: list[tuple[Point, Point]]) -> FrameBox | None:
     return FrameBox(corners=corners)
 
 
+_MARKER_RE = re.compile(
+    r"^;\s*PA_ANALYZER_FRAME\s+X0=([\d.-]+)\s+Y0=([\d.-]+)\s+"
+    r"X1=([\d.-]+)\s+Y1=([\d.-]+)\s*$",
+    re.MULTILINE,
+)
+
+
+def _find_frame_box_from_marker(gcode_text: str) -> FrameBox | None:
+    """Sucht einen ; PA_ANALYZER_FRAME-Kommentar und konstruiert daraus
+    eine FrameBox. Wird vom Generator-v2 emittiert (3-Linien-"["-Frame
+    ist nicht als 4-Linien-Rechteck detektierbar)."""
+    m = _MARKER_RE.search(gcode_text)
+    if m is None:
+        return None
+    bx0, by0, bx1, by1 = (float(x) for x in m.groups())
+    # 4 Ecken im Uhrzeigersinn ab oben-links (entspricht der Konvention
+    # der bestehenden Rectangle-Detection: ab Top-Left CCW oder CW —
+    # hier konsistent mit rectangle_from_run)
+    corners = (
+        Point(bx0, by0),
+        Point(bx1, by0),
+        Point(bx1, by1),
+        Point(bx0, by1),
+    )
+    return FrameBox(corners=corners)
+
+
 def _find_frame_box(gcode_text: str) -> FrameBox | None:
     """Findet die äußere Rahmen-Box: das erste geschlossene,
     achsenparallele Rechteck aus 4 konsekutiven extrudierenden Moves."""
@@ -259,7 +286,10 @@ def _content_bounds(gcode_text: str) -> tuple[Point, Point] | None:
 def parse(gcode_text: str) -> PatternModel:
     """Parst PA-Pattern-GCode in ein PatternModel."""
     groups = _dedupe_by_pa(_parse_groups(gcode_text))
-    frame_box = _find_frame_box(gcode_text)
+    # v2: Marker-Kommentar hat Vorrang (für 3-Linien-"["-Frame).
+    # Fallback: alte 4-Linien-Detection (Backward-Compat).
+    frame_box = (_find_frame_box_from_marker(gcode_text)
+                 or _find_frame_box(gcode_text))
     content_bounds = _content_bounds(gcode_text)
     return PatternModel(
         groups=tuple(groups),

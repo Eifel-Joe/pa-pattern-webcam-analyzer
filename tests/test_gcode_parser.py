@@ -202,3 +202,65 @@ def test_parse_m82_mit_g92_reset():
     # G92 E0 setzt den Extruder-Origin zurück; der folgende Move mit
     # E0.5 ist danach wieder eine Extrusion (Delta +0.5 statt -5).
     assert parse(_ABSOLUT_E_G92).groups == parse(_BASIS).groups
+
+
+def test_parse_findet_frame_box_aus_marker_kommentar():
+    """Wenn der Generator einen ; PA_ANALYZER_FRAME-Marker emittiert,
+    nutzt der Parser dessen Koordinaten — auch wenn KEIN geschlossenes
+    4-Linien-Rechteck im GCode steht (= v2 "["-Frame)."""
+    gcode = (
+        "; PA_ANALYZER_FRAME X0=100 Y0=110 X1=180 Y1=170\n"
+        "G1 X100 Y170 F7200\n"
+        "G1 X100 Y110 E1.0 F1800\n"   # links vertikal (gedruckt)
+        "G1 X180 Y110 E1.0 F1800\n"   # unten horizontal (gedruckt)
+        # KEIN Frame-Right, KEIN Frame-Top — nur 2 Linien
+    )
+    model = parse(gcode)
+    assert model.frame_box is not None
+    corners = model.frame_box.corners
+    xs = sorted({round(c.x, 1) for c in corners})
+    ys = sorted({round(c.y, 1) for c in corners})
+    assert xs == [100.0, 180.0], f"Falsche X-Koordinaten: {xs}"
+    assert ys == [110.0, 170.0], f"Falsche Y-Koordinaten: {ys}"
+
+
+def test_parse_marker_hat_vorrang_vor_4_linien_detection():
+    """Wenn beide vorhanden sind (Marker + 4-Linien-Rechteck), gewinnt
+    der Marker. Damit kann der Generator immer den Marker emittieren
+    und sich darauf verlassen, dass der Parser sie auch nutzt."""
+    gcode = (
+        "; PA_ANALYZER_FRAME X0=50 Y0=60 X1=90 Y1=100\n"
+        "G1 X10 Y10 F7200\n"
+        # 4 Linien die ein anderes Rechteck bilden — sollte IGNORIERT werden
+        "G1 X10 Y20 E1.0 F1800\n"
+        "G1 X30 Y20 E1.0 F1800\n"
+        "G1 X30 Y10 E1.0 F1800\n"
+        "G1 X10 Y10 E1.0 F1800\n"
+    )
+    model = parse(gcode)
+    assert model.frame_box is not None
+    corners = model.frame_box.corners
+    xs = sorted({round(c.x, 1) for c in corners})
+    ys = sorted({round(c.y, 1) for c in corners})
+    # Marker-Werte, nicht 4-Linien-Werte
+    assert xs == [50.0, 90.0]
+    assert ys == [60.0, 100.0]
+
+
+def test_parse_fallback_auf_4_linien_detection_ohne_marker():
+    """Ohne Marker funktioniert die alte 4-Linien-Detection weiter
+    (Backward-Compat mit OrcaSlicer-Fixture etc.)."""
+    gcode = (
+        "G1 X10 Y10 F7200\n"
+        "G1 X10 Y20 E1.0 F1800\n"
+        "G1 X30 Y20 E1.0 F1800\n"
+        "G1 X30 Y10 E1.0 F1800\n"
+        "G1 X10 Y10 E1.0 F1800\n"
+    )
+    model = parse(gcode)
+    assert model.frame_box is not None
+    corners = model.frame_box.corners
+    xs = sorted({round(c.x, 1) for c in corners})
+    ys = sorted({round(c.y, 1) for c in corners})
+    assert xs == [10.0, 30.0]
+    assert ys == [10.0, 20.0]

@@ -647,3 +647,30 @@ def test_generate_margin_null_kein_padding_zwischen_frame_und_pattern():
     # min(ys) > 100 — alle Moves sind im Bett-Mitte-Bereich
     # Hier: einfach prüfen Y-Span ist mind. 50 mm (= 12 + 42 ohne Padding).
     assert y_span >= 50.0, f"Y-Span {y_span:.2f} zu klein"
+
+
+def test_generate_emittiert_frame_marker_kommentar():
+    """Generator emittiert vor dem 3-Linien-Frame einen Marker-
+    Kommentar mit den Frame-Box-Koordinaten. Parser nutzt diesen
+    bevorzugt, weil das "["-Frame nicht als 4-Linien-Rechteck
+    erkennbar ist.
+    """
+    p = GeneratorParams()
+    g = generate(p)
+    import re
+    m = re.search(
+        r"; PA_ANALYZER_FRAME X0=([\d.-]+) Y0=([\d.-]+) "
+        r"X1=([\d.-]+) Y1=([\d.-]+)",
+        g,
+    )
+    assert m is not None, "Frame-Marker-Kommentar fehlt im Output"
+    bx0, by0, bx1, by1 = (float(x) for x in m.groups())
+    # Sanity: bx0 < bx1, by0 < by1, Frame ist zentriert um 150,150 (default bed)
+    assert bx0 < bx1
+    assert by0 < by1
+    cx = (bx0 + bx1) / 2
+    cy = (by0 + by1) / 2
+    assert abs(cx - 150.0) < 1.0, (
+        f"Frame nicht bett-zentriert (X-Mitte {cx:.2f})")
+    assert abs(cy - 150.0) < 1.0, (
+        f"Frame nicht bett-zentriert (Y-Mitte {cy:.2f})")

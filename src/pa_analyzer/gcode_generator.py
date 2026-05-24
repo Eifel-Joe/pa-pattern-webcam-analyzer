@@ -426,6 +426,12 @@ def generate(params: GeneratorParams) -> str:
                      p.filament_diameter, p.extrusion_multiplier)
     e_h = _extrusion(bx1 - bx0, lw, p.layer_height,
                      p.filament_diameter, p.extrusion_multiplier)
+    # Frame-Box-Koordinaten als Marker-Kommentar — Parser nutzt sie
+    # bevorzugt, weil das v2-"["-Frame nicht als 4-Linien-Rechteck
+    # erkennbar wäre (nur 2 extrudierende Frame-Moves).
+    out.append(
+        f"; PA_ANALYZER_FRAME X0={_fmt(bx0)} Y0={_fmt(by0)} "
+        f"X1={_fmt(bx1)} Y1={_fmt(by1)}")
     out.extend(travel_to(bx0, by1))
     out.append(f"G1 X{_fmt(bx0)} Y{_fmt(by0)} "
                f"E{_fmt_e(e_v)} F{print_f}")  # links: oben → unten
