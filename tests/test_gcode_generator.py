@@ -247,3 +247,38 @@ def test_generator_params_neue_defaults():
     # Speed/Accel
     assert p.speed_print == 100.0    # geändert von 60
     assert p.accel == 2000.0         # neu
+
+
+def test_generate_pattern_hoehe_enthaelt_top_bar_und_band_gap():
+    # Frame-Y-Erstreckung muss jetzt = 2*margin + chevron_band +
+    # chevron_band_gap + top_bar_height sein.
+    # 2*dy bei wall_side_length=30, corner_angle=90 → 2*30*sin(45°) ≈ 42.43
+    # pattern_h = top_bar_height(4) + chevron_band_gap(1) + 42.43 ≈ 47.43
+    # Rahmenhöhe = pattern_h + 2*margin(4) ≈ 55.43 mm
+    # OHNE Top-Bar wäre Rahmenhöhe = 2*dy + 2*margin ≈ 50.43 mm
+    p = GeneratorParams()
+    g = generate(p)
+    # Sammle nur Frame-Y-Werte: Frame-Zeilen enthalten kein 'E'-Feld
+    # bei Travel und emittieren 4 Kanten. Statt Heuristik: wir parsen
+    # die exakten Frame-Koordinaten durch Vergleich mit den erwarteten Grenzen.
+    # Einfacher: Frame-Höhe = by1 - by0. Aus den 4 Frame-Zeilen nach dem
+    # Frame-Travel lassen sich by0 und by1 direkt ablesen.
+    import re
+    # Frame-Zeilen: extrudierende G1-Moves mit sowohl X als auch Y,
+    # die VOR dem ersten SET_PRESSURE_ADVANCE stehen
+    zeilen = g.splitlines()
+    first_pa_idx = next(i for i, z in enumerate(zeilen)
+                        if "SET_PRESSURE_ADVANCE" in z)
+    frame_ys = set()
+    for line in zeilen[:first_pa_idx]:
+        # Nur extrudierende Moves (enthalten 'E')
+        if " E" in line:
+            m = re.search(r"\sY([\d.-]+)", line)
+            if m:
+                frame_ys.add(float(m.group(1)))
+    frame_h = max(frame_ys) - min(frame_ys)
+    # Erwartete Rahmenhöhe MIT Top-Bar: ≈ 55.43 mm
+    # Schwellwert: zwischen 50.43 (ohne) und 55.43 (mit) → > 54.0
+    assert frame_h >= 54.0, (
+        f"Rahmen-Höhe {frame_h:.2f} mm zu klein — "
+        f"Top-Bar (4 mm) + Band-Gap (1 mm) fehlen vermutlich")

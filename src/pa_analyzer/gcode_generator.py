@@ -201,14 +201,20 @@ def generate(params: GeneratorParams) -> str:
     pattern_w = (
         (len(pa_values) - 1) * adv + (p.wall_count - 1) * wall_off + dx
     )
-    pattern_h = 2 * dy
+    chevron_h = 2 * dy
+    # pattern_h umfasst: Top-Bar + Trennzone + Chevron-Band
+    # (Vorbereitung für Top-Bar-Emit in Task 6)
+    pattern_h = p.top_bar_height + p.chevron_band_gap + chevron_h
     margin = 4.0
     bx0 = p.bed_x / 2 - (pattern_w + 2 * margin) / 2
     by0 = p.bed_y / 2 - (pattern_h + 2 * margin) / 2
     bx1 = bx0 + pattern_w + 2 * margin
     by1 = by0 + pattern_h + 2 * margin
-    px0 = bx0 + margin  # Start-X des ersten Chevrons
-    py0 = by0 + margin  # Start-Y (untere Arm-Enden)
+    px0 = bx0 + margin            # Start-X des ersten Chevrons
+    py0 = by0 + margin            # untere Arm-Enden, wie bisher
+    # Top-Bar-Y-Bereich (für späteren Helper in Task 6):
+    top_bar_y_low = by1 - margin - p.top_bar_height
+    top_bar_y_high = by1 - margin
 
     def travel_to(x: float, y: float) -> list[str]:
         """Travel mit Retract+De-Retract (Ellis-Stil)."""
