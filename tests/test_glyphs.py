@@ -50,3 +50,48 @@ def test_glyph_punkt_ist_kurze_linie():
     # Beide Punkte am unteren Rand (y == 0)
     assert strokes[0][0][1] == 0.0
     assert strokes[0][1][1] == 0.0
+
+
+from pa_analyzer.glyphs import render_label_gcode
+
+
+def _druck_args() -> dict:
+    """Sammelt typische Druckwerte für die Tests."""
+    return dict(
+        glyph_height=0.7, glyph_width=0.5, glyph_gap=0.2,
+        line_width=0.45, layer_height=0.2,
+        filament_diameter=1.75, extrusion_multiplier=1.0,
+        print_speed=60.0, travel_speed=120.0,
+    )
+
+
+def test_render_label_einzelne_ziffer_horizontal():
+    lines = render_label_gcode("1", x=10.0, y=20.0, rotation=0,
+                                **_druck_args())
+    # "1" ist 1 Stroke (vertikal), 2 Punkte — Travel zum Start +
+    # extrudierter Move zum Endpunkt = mindestens 2 G1-Zeilen.
+    assert any("G1 X10.25 Y20" in z for z in lines), (
+        f"Travel zum Start (X10.25 = 10.0 + 0.5*0.5) fehlt: {lines}")
+    assert any("G1 X10.25 Y20.7" in z for z in lines), (
+        f"Extrudierter Move zum Endpunkt (Y=20+0.7) fehlt: {lines}")
+
+
+def test_render_label_mehrziffern_x_offset():
+    # "12" — Ziffer "1" bei x=0, dann "2" bei x = glyph_width + glyph_gap
+    # = 0.5 + 0.2 = 0.7 (relativ zum Label-Start).
+    lines = render_label_gcode("12", x=0.0, y=0.0, rotation=0,
+                                **_druck_args())
+    # "1" beginnt bei x=0+0.25=0.25
+    assert any("X0.25" in z for z in lines)
+    # "2" beginnt bei x=0.7+0=0.7 (erster Punkt von "2" ist (0, 1))
+    assert any("X0.7" in z for z in lines)
+
+
+def test_render_label_extrudierter_move_hat_e_wert():
+    lines = render_label_gcode("1", x=0.0, y=0.0, rotation=0,
+                                **_druck_args())
+    # Der extrudierte Move (kein Travel) muss einen E-Wert enthalten.
+    extrudiert = [z for z in lines if z.startswith("G1")
+                  and " E" in z]
+    assert len(extrudiert) >= 1, (
+        f"kein extrudierter Move mit E-Wert: {lines}")
