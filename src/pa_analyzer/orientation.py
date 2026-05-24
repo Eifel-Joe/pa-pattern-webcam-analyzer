@@ -43,14 +43,35 @@ def pick_orientation(
 ) -> tuple[int, float]:
     """Liefert (beste Rotation 0..3, Dichte-Verhältnis der besten).
 
-    Das Balken-Band ist der Bildstreifen oberhalb der Rahmen-Box-
-    Oberkante; das Chevron-Band der Rest. Höchstes Verhältnis gewinnt.
+    Das Balken-Band ist der Bildstreifen oberhalb der Chevron-Apex-
+    Oberkante (= dort wo die Top-Bar liegt); das Chevron-Band der Rest.
+    Höchstes Verhältnis gewinnt.
+
+    Pipeline-Fix 2026-05-24: `chevron_band_top` aus dem Parser statt
+    `frame_box.max_y` — letzteres ist bei v2-Geometrie identisch mit
+    `content_bounds.hi.y` (oder sogar höher, wegen Marker-Plan-Wert),
+    was zu `band <= 0` und falscher Rotation führte (siehe
+    Pipeline-Diagnose).
     """
     w, h = warp_size(model)
-    _, hi = model.content_bounds  # nur hi.y für die Bandgrenze gebraucht
-    # Oberkante der Rahmen-Box = Unterkante des Balkens.
-    frame_top = max(p.y for p in model.frame_box.corners)
-    band = int(round((hi.y - frame_top) * PX_PER_MM))
+    _, hi = model.content_bounds
+    # Oberkante des Chevron-Bandes = Unterkante des Top-Bar-Bandes.
+    # Bevorzugt: chevron_band_top vom Parser (max-y aller Apexe).
+    # Fallback: frame_box.max_y für Backward-Compat mit OrcaSlicer-
+    # Fixture (wo Top-Bar AUSSERHALB des Frames liegt → frame_top <
+    # hi.y und band positiv).
+    if model.chevron_band_top is not None:
+        band_grenze = model.chevron_band_top
+    else:
+        band_grenze = max(p.y for p in model.frame_box.corners)
+    band = int(round((hi.y - band_grenze) * PX_PER_MM))
+
+    # Safety-Net: bei nicht-positivem band kann die Diskriminierung
+    # nicht funktionieren (warped[:0] ist leer, warped[:negativ] wäre
+    # zufällig). Konservativ rot=0 zurückgeben — Voraussetzung dafür
+    # ist dass locate_quad das Pattern schon TL-kanonisch liefert.
+    if band <= 0:
+        return 0, 0.0
 
     best_rot, best_ratio = 0, -1.0
     for rot in range(4):

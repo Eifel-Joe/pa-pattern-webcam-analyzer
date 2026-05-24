@@ -264,3 +264,64 @@ def test_parse_fallback_auf_4_linien_detection_ohne_marker():
     ys = sorted({round(c.y, 1) for c in corners})
     assert xs == [10.0, 30.0]
     assert ys == [10.0, 20.0]
+
+
+# ============================================================================
+# Tests für chevron_band_top — fix für pick_orientation/v2-Geometrie.
+# Pipeline-Diagnose (2026-05-24) zeigte: frame_box.max_y (= Marker-by1) ist
+# bei v2 HÖHER als content_bounds.hi.y → band negativ → orientation broken.
+# Fix: separates Feld chevron_band_top = max-y der Chevron-Apexe.
+# ============================================================================
+
+def test_parse_chevron_band_top_aus_apex_y():
+    """chevron_band_top = max(apex.y) über alle Chevrons aller Gruppen.
+    Markiert die obere Grenze des Chevron-Bandes (= untere Grenze der
+    Top-Bar). orientation.py nutzt das anstelle von frame_box.max_y,
+    weil dieser Wert (Marker-Plan-Wert) zu hoch sein kann."""
+    # 2 PA-Gruppen, je 1 Chevron, Apex bei y=20 und y=22
+    gcode = (
+        "SET_PRESSURE_ADVANCE ADVANCE=0.010\n"
+        "G1 X10 Y10 F7200\n"             # Travel zum Chevron-Start
+        "G1 X20 Y20 E0.5 F1800\n"        # Arm 1: Start → Apex (y=20)
+        "G1 X10 Y30 E0.5 F1800\n"        # Arm 2: Apex → End
+        "SET_PRESSURE_ADVANCE ADVANCE=0.020\n"
+        "G1 X50 Y10 F7200\n"
+        "G1 X60 Y22 E0.5 F1800\n"        # Apex y=22
+        "G1 X50 Y34 E0.5 F1800\n"
+    )
+    model = parse(gcode)
+    assert model.chevron_band_top is not None
+    # max-Y aller Apexe = max(20, 22) = 22
+    assert model.chevron_band_top == pytest.approx(22.0, abs=0.01)
+
+
+def test_parse_chevron_band_top_none_ohne_groups():
+    """Ohne PA-Gruppen kann chevron_band_top nicht berechnet werden
+    → None (analog zu frame_box / content_bounds)."""
+    model = parse("G1 X10 Y10 F7200\n")  # keine SET_PRESSURE_ADVANCE
+    assert model.groups == ()
+    assert model.chevron_band_top is None
+
+
+def test_parse_chevron_band_top_unterhalb_content_hi_y():
+    """In v2-Geometrie liegen Chevron-Apexe UNTER der Top-Bar.
+    chevron_band_top sollte deutlich unter content_bounds.hi.y sein
+    (damit band > 0 in orientation.py)."""
+    # Chevron-Apex bei y=40, Top-Bar (separater Run nach Travel) bei y=60.
+    gcode = (
+        "SET_PRESSURE_ADVANCE ADVANCE=0.010\n"
+        "G1 X10 Y30 F7200\n"             # Travel zum Chevron-Start
+        "G1 X20 Y40 E0.5 F1800\n"        # Chevron Arm 1: Start→Apex (y=40)
+        "G1 X10 Y50 E0.5 F1800\n"        # Chevron Arm 2: Apex→End
+        # Travel beendet den Chevron-Run — danach separate Top-Bar-Extrusion.
+        "G1 X10 Y60 F7200\n"             # Travel zum Top-Bar-Anfang
+        "G1 X100 Y60 E0.5 F1800\n"       # Top-Bar Linie bei y=60
+    )
+    model = parse(gcode)
+    assert model.chevron_band_top is not None
+    assert model.content_bounds is not None
+    _, hi = model.content_bounds
+    # Apex bei 40, Top-Bar bei 60 → chevron_band_top << hi.y
+    assert model.chevron_band_top < hi.y
+    assert model.chevron_band_top == pytest.approx(40.0, abs=0.01)
+    assert hi.y == pytest.approx(60.0, abs=0.01)
