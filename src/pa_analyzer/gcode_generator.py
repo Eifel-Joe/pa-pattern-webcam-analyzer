@@ -75,6 +75,12 @@ class GeneratorParams:
 
     # Beschleunigung (neu)
     accel: float = 2000.0               # mm/s² (0 = nicht emittieren)
+    # Sicherheits-Reduzierung für die erste Layer — bessere Bett-Haftung.
+    # Wird für Frame, Top-Bar, Anker und Chevrons in Layer 1 (= layer==0)
+    # angewendet; ab Layer 2 (= layer==1) gelten speed_print/accel.
+    # 0 = keine Reduzierung (Drucker-Default bzw. speed_print/accel).
+    first_layer_speed: float = 50.0     # mm/s
+    first_layer_accel: float = 500.0    # mm/s²
 
     # Klipper-Hooks (start_gcode unterstützt {temp} und {bed_temp})
     extruder_name: str = ""          # leer = SET_PRESSURE_ADVANCE ohne EXTRUDER=
@@ -353,6 +359,7 @@ def generate(params: GeneratorParams) -> str:
         p.extrusion_multiplier,
     )
     print_f = round(p.speed_print * 60)
+    first_layer_print_f = round(p.first_layer_speed * 60)
     travel_f = round(p.speed_travel * 60)
     purge_f = round(p.purge_speed * 60)
     retract = _retract_block(p)
@@ -402,13 +409,15 @@ def generate(params: GeneratorParams) -> str:
         "G92 E0",
     ]
 
-    # Beschleunigung als Test-Parameter setzen (Klipper-Idiom).
-    # Mit accel=0 wird das übersprungen — dann gilt der Drucker-Default
-    # bzw. was PRINT_START gesetzt hat.
-    if p.accel > 0:
+    # First-Layer-Sicherheit: reduzierte Beschleunigung für bessere
+    # Bett-Haftung. Wird in Layer 1 (= layer==0) für Frame, Top-Bar,
+    # Anker und Chevrons verwendet. Ab Layer 2 (= layer==1) switcht
+    # SET_VELOCITY_LIMIT zurück auf p.accel.
+    # first_layer_accel=0 → kein Set, Drucker-Default für Layer 1.
+    if p.first_layer_accel > 0:
         out.append(
-            f"SET_VELOCITY_LIMIT ACCEL={_fmt(p.accel)} "
-            f"ACCEL_TO_DECEL={_fmt(p.accel / 2)}")
+            f"SET_VELOCITY_LIMIT ACCEL={_fmt(p.first_layer_accel)} "
+            f"ACCEL_TO_DECEL={_fmt(p.first_layer_accel / 2)}")
 
     # Lüfter für die erste Layer (PLA: 0; PETG/ABS: konfigurierbar)
     if p.fan_speed_layer1 > 0:
@@ -440,11 +449,12 @@ def generate(params: GeneratorParams) -> str:
     out.append(
         f"; PA_ANALYZER_FRAME X0={_fmt(bx0)} Y0={_fmt(by0)} "
         f"X1={_fmt(bx1)} Y1={_fmt(by1)}")
+    # Frame wird in Layer 1 gedruckt → first_layer_print_f für Bett-Haftung
     out.extend(travel_to(bx0, by1))
     out.append(f"G1 X{_fmt(bx0)} Y{_fmt(by0)} "
-               f"E{_fmt_e(e_v)} F{print_f}")  # links: oben → unten
+               f"E{_fmt_e(e_v)} F{first_layer_print_f}")  # links: oben → unten
     out.append(f"G1 X{_fmt(bx1)} Y{_fmt(by0)} "
-               f"E{_fmt_e(e_h)} F{print_f}")  # unten: links → rechts
+               f"E{_fmt_e(e_h)} F{first_layer_print_f}")  # unten: links → rechts
 
     # SET_PRESSURE_ADVANCE-Präfix vorbereiten (optional mit EXTRUDER=)
     set_pa_prefix = (
@@ -457,6 +467,17 @@ def generate(params: GeneratorParams) -> str:
     for layer in range(p.num_layers):
         z = (layer + 1) * p.layer_height
         out.append(f"G1 Z{_fmt(z)} F{travel_f}")
+        # Layer-spezifische Druck-Geschwindigkeit:
+        # Layer 0 (= erste Layer): first_layer_print_f (Bett-Haftung).
+        # Layer >=1: print_f (normale Test-Geschwindigkeit).
+        layer_print_f = first_layer_print_f if layer == 0 else print_f
+        # Nach Layer 0: Beschleunigung von first_layer_accel auf p.accel
+        # umstellen (sofern p.accel > 0; sonst bleibt first_layer_accel
+        # bzw. der Drucker-Default).
+        if layer == 1 and p.accel > 0:
+            out.append(
+                f"SET_VELOCITY_LIMIT ACCEL={_fmt(p.accel)} "
+                f"ACCEL_TO_DECEL={_fmt(p.accel / 2)}")
         # Lüfter nach Layer 1 auf den normalen Wert umschalten
         if layer == 1 and p.fan_speed != p.fan_speed_layer1:
             out.append(f"M106 S{round(p.fan_speed * 255)}")
@@ -467,7 +488,7 @@ def generate(params: GeneratorParams) -> str:
         out.extend(_top_bar_block(
             p, bx0, bx1,
             top_bar_y_low, top_bar_y_high,
-            travel_to, print_f,
+            travel_to, layer_print_f,
         ))
         # Anker-Marker links angedockt an Frame-Left (bx0).
         # v2: margin=0, Anker sitzt direkt an der Frame-Linie.
@@ -475,7 +496,7 @@ def generate(params: GeneratorParams) -> str:
         chevron_center_y = py0 + dy
         out.extend(_anchor_marker_block(
             p, bx0, chevron_center_y,
-            travel_to, print_f,
+            travel_to, layer_print_f,
         ))
         for j, pa in enumerate(pa_values):
             out.append(f"M117 PA {_fmt(pa)}")
@@ -487,12 +508,12 @@ def generate(params: GeneratorParams) -> str:
                 # Arm 1: Start -> Apex
                 out.append(
                     f"G1 X{_fmt(sx + dx)} Y{_fmt(py0 + dy)} "
-                    f"E{_fmt_e(e_arm)} F{print_f}"
+                    f"E{_fmt_e(e_arm)} F{layer_print_f}"
                 )
                 # Arm 2: Apex -> End
                 out.append(
                     f"G1 X{_fmt(sx)} Y{_fmt(py0 + 2 * dy)} "
-                    f"E{_fmt_e(e_arm)} F{print_f}"
+                    f"E{_fmt_e(e_arm)} F{layer_print_f}"
                 )
 
         # Labels nur in oberster Layer (sitzen als Relief auf der Top-Bar).

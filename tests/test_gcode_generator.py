@@ -249,6 +249,9 @@ def test_generator_params_neue_defaults():
     # Speed/Accel (unverändert)
     assert p.speed_print == 100.0
     assert p.accel == 2000.0
+    # First-Layer-Sicherheit (NEU): reduzierte Werte für Layer 1
+    assert p.first_layer_speed == 50.0
+    assert p.first_layer_accel == 500.0
 
 
 def test_generate_pattern_hoehe_enthaelt_top_bar_und_band_gap():
@@ -405,7 +408,11 @@ def test_generate_emittiert_set_velocity_limit_accel():
 
 
 def test_generate_accel_null_emittiert_kein_velocity_limit():
-    p = GeneratorParams(accel=0.0)
+    # accel=0 UND first_layer_accel=0 → kein SET_VELOCITY_LIMIT.
+    # (Mit Default first_layer_accel=500 würde Layer 1 trotzdem ein
+    # Velocity-Limit setzen — getestet separat in
+    # test_generate_first_layer_accel_null_emittiert_nicht.)
+    p = GeneratorParams(accel=0.0, first_layer_accel=0.0)
     g = generate(p)
     assert "SET_VELOCITY_LIMIT" not in g
 
@@ -696,6 +703,91 @@ def test_generate_label_stride_zwei_emittiert_jedes_zweite_label():
     assert g1_stride1 > g1_stride2 + 50, (
         f"stride=1 ({g1_stride1}) sollte deutlich mehr Moves haben als "
         f"stride=2 ({g1_stride2}) — label_stride wirkt nicht.")
+
+
+def test_generate_first_layer_accel_vor_dem_pattern():
+    """First-Layer-Sicherheit: SET_VELOCITY_LIMIT ACCEL=500
+    (first_layer_accel) wird vor dem Frame emittiert, NICHT der
+    p.accel-Wert (2000). Ab Layer 2 wird auf p.accel umgeschaltet."""
+    p = GeneratorParams(accel=2000.0, first_layer_accel=500.0)
+    g = generate(p)
+    lines = g.splitlines()
+    # Erstes SET_VELOCITY_LIMIT muss ACCEL=500 sein (first_layer_accel)
+    first_set = next(l for l in lines if "SET_VELOCITY_LIMIT" in l)
+    assert "ACCEL=500" in first_set, (
+        f"Erstes SET_VELOCITY_LIMIT sollte ACCEL=500 (first_layer_accel) "
+        f"sein, ist aber: {first_set}")
+    assert "ACCEL_TO_DECEL=250" in first_set
+    # Zweites SET_VELOCITY_LIMIT muss ACCEL=2000 (p.accel) sein
+    velocity_limit_lines = [l for l in lines if "SET_VELOCITY_LIMIT" in l]
+    assert len(velocity_limit_lines) >= 2, (
+        f"Erwartet mind. 2x SET_VELOCITY_LIMIT (Layer 1 + Switch), "
+        f"got: {velocity_limit_lines}")
+    second_set = velocity_limit_lines[1]
+    assert "ACCEL=2000" in second_set, (
+        f"Zweites SET_VELOCITY_LIMIT sollte auf ACCEL=2000 switchen, "
+        f"ist aber: {second_set}")
+
+
+def test_generate_first_layer_speed_fuer_frame_und_layer_0():
+    """Frame + Layer-0-Moves nutzen first_layer_speed (50 mm/s → F3000).
+    Layer 1+-Chevrons nutzen p.speed_print (100 mm/s → F6000)."""
+    p = GeneratorParams(speed_print=100.0, first_layer_speed=50.0,
+                        num_layers=2)
+    g = generate(p)
+    lines = g.splitlines()
+    # Suche die Z-Marken
+    z_layer1_idx = next(i for i, l in enumerate(lines)
+                        if l.startswith("G1 Z0.2 ") and " E" not in l)
+    z_layer2_idx = next(i for i, l in enumerate(lines)
+                        if l.startswith("G1 Z0.4 ") and " E" not in l)
+    # Frame liegt zwischen Header und Layer-Schleife — also vor z_layer1_idx?
+    # Eigentlich Frame wird VOR der Layer-Schleife gedruckt + erstes Z=0.2.
+    # Lass uns prüfen: alle extrudierten Moves im Bereich vor z_layer2 sollten
+    # F3000 (first_layer) sein, alle ab z_layer2 sollten F6000 sein.
+    layer1_block = lines[:z_layer2_idx]
+    layer2_block = lines[z_layer2_idx:]
+    # Extrudierte Moves mit F-Wert
+    import re
+    def f_values(block):
+        result = []
+        for l in block:
+            if not l.startswith("G1"):
+                continue
+            if " E" not in l:
+                continue
+            m = re.search(r"F(\d+)", l)
+            if m:
+                result.append(int(m.group(1)))
+        return result
+    layer1_fs = f_values(layer1_block)
+    layer2_fs = f_values(layer2_block)
+    # Layer 1 muss F3000 enthalten (Frame + Top-Bar + Anker + Chevrons)
+    # F1500 = purge_speed (25 mm/s) ist auch erlaubt
+    assert 3000 in layer1_fs, (
+        f"Layer 1 sollte F3000 (first_layer_speed=50*60) enthalten, "
+        f"F-Werte: {set(layer1_fs)}")
+    # Layer 1 darf KEIN F6000 enthalten
+    assert 6000 not in layer1_fs, (
+        f"Layer 1 sollte KEIN F6000 (speed_print=100*60) enthalten, "
+        f"F-Werte: {set(layer1_fs)}")
+    # Layer 2 muss F6000 enthalten
+    assert 6000 in layer2_fs, (
+        f"Layer 2 sollte F6000 (speed_print=100*60) enthalten, "
+        f"F-Werte: {set(layer2_fs)}")
+
+
+def test_generate_first_layer_accel_null_emittiert_nicht():
+    """first_layer_accel=0 → kein SET_VELOCITY_LIMIT für Layer 1
+    (Drucker-Default greift)."""
+    p = GeneratorParams(accel=2000.0, first_layer_accel=0.0)
+    g = generate(p)
+    lines = g.splitlines()
+    velocity_limit_lines = [l for l in lines if "SET_VELOCITY_LIMIT" in l]
+    # Es gibt nur 1 SET_VELOCITY_LIMIT (der Layer-2-Switch auf ACCEL=2000),
+    # KEIN initial-Set für first_layer_accel
+    assert len(velocity_limit_lines) == 1
+    assert "ACCEL=2000" in velocity_limit_lines[0]
 
 
 def test_generate_label_stride_eins_emittiert_alle_labels():
