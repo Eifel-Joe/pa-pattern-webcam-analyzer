@@ -90,6 +90,11 @@ def _cmd_generate(args: argparse.Namespace) -> int:
         gen_overrides["accel"] = args.accel
     elif cfg.accel is not None:
         gen_overrides["accel"] = cfg.accel
+    # wall_count hat kein Config-Field — nur CLI/Macro-Override.
+    # Falls später [generator].wall_count gewünscht, kann das nachgezogen
+    # werden analog zu speed_print/accel.
+    if args.walls is not None:
+        gen_overrides["wall_count"] = args.walls
     params = GeneratorParams(
         pa_start=start, pa_end=end, pa_step=step,
         temp=args.temp, bed_temp=args.bed_temp,
@@ -154,6 +159,11 @@ def _build_parser() -> argparse.ArgumentParser:
                    help="Beschleunigung in mm/s² (Default: aus "
                         "pa_analyzer.conf [generator], sonst 2000; "
                         "0 = nicht emittieren)")
+    g.add_argument("--walls", type=int, default=None,
+                   help="Anzahl verschachtelter Chevron-Wände pro Gruppe "
+                        "(Default: 3). Mehr Wände = dickere Chevrons, "
+                        "besser für Webcam-Detektion und visuelle "
+                        "Auswertung, aber längere Druckzeit.")
     g.set_defaults(func=_cmd_generate)
 
     a = sub.add_parser("analyze", help="lokale Bilddatei auswerten")
