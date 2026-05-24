@@ -39,6 +39,26 @@ beides pro Lauf zu setzen.
 - Defaults überschreibbar via `[generator]`-Sektion in `pa_analyzer.conf`
   (siehe nächster Punkt).
 
+### [mittel] Rahmen berührt Chevrons (3-Linien-Frame statt geschlossenem Rechteck)
+
+Aktuell zieht der Generator einen geschlossenen 4-seitigen Rahmen um
+das Chevron-Pattern mit etwas Abstand. Resultat beim ersten Live-Test:
+Rahmen und Chevrons sind beim Ablösen vom Bett **getrennte
+Einzelteile** — fummelig zu entfernen.
+
+**Vorschlag:** Rahmen als 3-Linien-"["-Form (oder "U") drucken, sodass
+die Chevron-Arm-Enden den Rahmen **berühren**. Der ganze Druck wird
+damit ein zusammenhängendes Teil und lässt sich in einem Stück
+abnehmen.
+
+**Umsetzung:** In `gcode_generator.py` die `_frame_block()`-Geometrie
+auf 3 Seiten + passende Chevron-Position-Berechnung anpassen, damit
+die Spitzen genau am Rahmen ansetzen. Tests für Rahmen-Form + Kontakt-
+Punkt-Koordinaten ergänzen.
+
+Vom User am 2026-05-24 nach dem ersten Live-Test gewünscht ("Lässt
+sich dann besser vom Druckbett entfernen").
+
 ### [mittel] Generator-Defaults aus der `pa_analyzer.conf` ziehen
 
 Aktuell sind `speed_*`, `retract_distance`, `purge_length`, `bed_x/y`
