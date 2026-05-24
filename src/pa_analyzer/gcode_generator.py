@@ -179,6 +179,37 @@ def _format_start(p: GeneratorParams) -> str:
             .replace("{bed_temp}", _fmt(p.bed_temp)))
 
 
+def _top_bar_block(
+    p: GeneratorParams, x0: float, x1: float,
+    y_low: float, y_high: float,
+    travel_to_fn, print_f: int,
+) -> list[str]:
+    """Vollfüllung der Top-Bar als Linien-Stadion.
+
+    Zieht horizontale Linien Y=y_low bis Y=y_high im Abstand
+    `line_width`, abwechselnd in X-Richtung (Boustrophedon = Pflüge
+    drehen ohne Travel).
+    """
+    lw = _line_width(p)
+    e_h = _extrusion(x1 - x0, lw, p.layer_height,
+                     p.filament_diameter, p.extrusion_multiplier)
+    out: list[str] = []
+    n_lines = max(1, int(round((y_high - y_low) / lw)))
+    # Travel zum Start
+    out.extend(travel_to_fn(x0, y_low))
+    rechts = True
+    for i in range(n_lines):
+        y = y_low + i * lw
+        if rechts:
+            out.append(f"G1 X{_fmt(x1)} Y{_fmt(y)} "
+                       f"E{_fmt_e(e_h)} F{print_f}")
+        else:
+            out.append(f"G1 X{_fmt(x0)} Y{_fmt(y)} "
+                       f"E{_fmt_e(e_h)} F{print_f}")
+        rechts = not rechts
+    return out
+
+
 def generate(params: GeneratorParams) -> str:
     """Erzeugt den vollständigen PA-Pattern-GCode als String."""
     p = params
@@ -281,6 +312,12 @@ def generate(params: GeneratorParams) -> str:
         # Lüfter nach Layer 1 auf den normalen Wert umschalten
         if layer == 1 and p.fan_speed != p.fan_speed_layer1:
             out.append(f"M106 S{round(p.fan_speed * 255)}")
+        # Top-Bar in jedem Layer (CV-Anker für orientation.py).
+        out.extend(_top_bar_block(
+            p, bx0 + margin, bx1 - margin,
+            top_bar_y_low, top_bar_y_high,
+            travel_to, print_f,
+        ))
         for j, pa in enumerate(pa_values):
             out.append(f"M117 PA {_fmt(pa)}")
             out.append(f"{set_pa_prefix}{_fmt(pa)}")

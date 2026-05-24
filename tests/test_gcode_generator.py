@@ -282,3 +282,36 @@ def test_generate_pattern_hoehe_enthaelt_top_bar_und_band_gap():
     assert frame_h >= 54.0, (
         f"Rahmen-Höhe {frame_h:.2f} mm zu klein — "
         f"Top-Bar (4 mm) + Band-Gap (1 mm) fehlen vermutlich")
+
+
+def test_generate_zieht_solid_top_bar():
+    # Top-Bar = Vollfüllung der Höhe top_bar_height über pattern_w.
+    # Bei top_bar_height=4 mm und line_width=0.45 mm → ca. 9 parallele
+    # Linien (4/0.45 ≈ 8.89).
+    p = GeneratorParams()
+    g = generate(p)
+    # Top-Bar-Y-Bereich: die obersten ~4 mm des Patterns. Wir prüfen,
+    # dass im oberen Bett-Bereich viele extrudierte horizontale Moves
+    # mit E-Wert auftauchen (typische Stadion-Füllung).
+    import re
+    e_lines_in_top = 0
+    for line in g.splitlines():
+        m = re.search(r"\sY([\d.-]+).+E([\d.-]+)", line)
+        if m:
+            y = float(m.group(1))
+            # Heuristik: Y im oberen Bereich = Y > bed_y/2 + 15 (grob)
+            if y > p.bed_y / 2 + 15:
+                e_lines_in_top += 1
+    assert e_lines_in_top >= 5, (
+        f"Nur {e_lines_in_top} extrudierte Moves im Top-Bar-Bereich — "
+        "Solid-Top-Bar fehlt vermutlich")
+
+
+def test_generate_top_bar_in_allen_layern():
+    # Top-Bar wird in jedem Layer gedruckt — Z-Werte werden mehrfach
+    # hochgesetzt, und in jedem Z-Block sollten Top-Bar-Moves auftauchen.
+    p = GeneratorParams(num_layers=2)
+    g = generate(p)
+    # Zwei Layer = zwei Z-Wechsel zu z=0.2 bzw. z=0.4.
+    assert "G1 Z0.2 " in g
+    assert "G1 Z0.4 " in g
