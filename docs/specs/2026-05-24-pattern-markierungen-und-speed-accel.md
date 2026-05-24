@@ -74,7 +74,7 @@ reicht nicht, siehe `docs/specs/2026-05-22-etappe2-vision-spike.md`
 | **Solid-Top-Bar** | Vollfüllung im oberen ~30 % des Frames, volle Pattern-Breite. Linien-Stadion: parallele Linien Abstand = `line_width` | Layer 1..N |
 | **Anker-Marker** | Gefülltes Rechteck `2 × 8 mm`, angedockt an Frame-Linkskante, vertikal mittig zur Chevron-Reihe. Backup-Asymmetrie für Links/Rechts-Eindeutigkeit | Layer 1..N |
 | **Chevrons** | 17 Gruppen (`pa_start..pa_end`, Schritt `pa_step`), je 3 verschachtelte Wände, Apex rechts | Layer 1..N |
-| **Speed/Accel-Header** | 2 hochkant rotierte Spalten ganz links auf der Top-Bar: nackte Zahlen "180" und "3000" | **nur Layer N** (oberste, als Relief) |
+| **Speed/Accel-Header** | 2 hochkant rotierte Spalten ganz links auf der Top-Bar: nackte Zahlen (z.B. "100" und "2000" bei Defaults) | **nur Layer N** (oberste, als Relief) |
 | **PA-Labels** | Pro Chevron-Gruppe ein PA-Wert komplett ("0.020"), hochkant über der zugehörigen Chevron-Gruppe, 5 Glyphen vertikal gestapelt | **nur Layer N** (oberste, als Relief) |
 
 ### Maße (Defaults)
@@ -93,9 +93,19 @@ header_column_spacing: float = 4.0 # mm — Abstand zwischen Speed- und Accel-Sp
 header_to_labels_gap: float = 3.0  # mm — Trenn-Lücke zwischen Header und PA-Werten
 
 # Speed/Accel (neu als Test-Parameter)
-speed_print: float = 180.0   # mm/s — bisheriger Default 60 ersetzt
-accel: float = 3000.0        # mm/s² — bisher nicht emittiert
+speed_print: float = 100.0   # mm/s — konservativ; bisheriger Default 60 ersetzt
+accel: float = 2000.0        # mm/s² — konservativ; bisher nicht emittiert
 ```
+
+**Warum konservativ:** 100/2000 funktionieren auf der breiten Mehrheit
+von Hobby-Druckern (Voron, Ender-3-Klassen, RatRig & Co.) ohne
+Resonanz-Probleme. Wer schneller drucken will (Speedbenchy-Setup,
+180+ mm/s @ 3000+ mm/s²), überschreibt die Werte in der eigenen
+`pa_analyzer.conf` (siehe unten) oder per CLI/Macro-Argument. Der
+PA-Wert ist über Speed/Accel-Bereiche eines gegebenen Druckers nicht
+1:1 portabel — ein Default-Test bei moderaten Werten ist das
+sicherere Sprungbrett, als jeden User zwingen, die Maschine erst auf
+180/3000 zu verifizieren.
 
 **Warum Labels nur in Layer N:** Bei `num_layers = 4` und
 `layer_height = 0.2 mm` stehen die Labels als 0.2 mm Relief auf der
@@ -137,7 +147,7 @@ GLYPHS: dict[str, list[list[tuple[float, float]]]] = {
 
 ```python
 def render_label_gcode(
-    text: str,                     # "0.020", "180", "3000"
+    text: str,                     # "0.020", "100", "2000"
     x: float, y: float,            # mm, Startposition (linke obere Ecke)
     glyph_height: float,           # mm
     glyph_width: float,            # mm
@@ -182,8 +192,8 @@ header_glyph_height: float = 1.0
 header_glyph_width: float = 2.0
 header_column_spacing: float = 4.0
 header_to_labels_gap: float = 3.0
-accel: float = 3000.0                # mm/s²; 0 = kein Accel-Emit
-# speed_print existiert schon, Default-Wert ändert sich von 60.0 auf 180.0
+accel: float = 2000.0                # mm/s²; 0 = kein Accel-Emit
+# speed_print existiert schon, Default-Wert ändert sich von 60.0 auf 100.0
 ```
 
 ### GCode-Reihenfolge (Druck)
@@ -246,9 +256,9 @@ Neue Argumente am `generate`-Subcommand:
 
 ```
 --speed FLOAT        Druck-Geschwindigkeit in mm/s (Default: aus
-                     pa_analyzer.conf, sonst 180)
+                     pa_analyzer.conf, sonst 100)
 --accel FLOAT        Beschleunigung in mm/s² (Default: aus
-                     pa_analyzer.conf, sonst 3000; 0 = nicht emittieren)
+                     pa_analyzer.conf, sonst 2000; 0 = nicht emittieren)
 ```
 
 ### Klipper-Macro
@@ -272,9 +282,11 @@ Neue Sektion in `pa_analyzer.conf` (und in `pa_analyzer.example.conf`):
 
 ```ini
 [generator]
-# Optional. Wenn weggelassen, gelten die GeneratorParams-Defaults.
-# Werden überschrieben durch SPEED=/ACCEL= im PA_CALIBRATE-Aufruf bzw.
-# --speed/--accel auf der Kommandozeile.
+# Optional. Wenn weggelassen, gelten die GeneratorParams-Defaults
+# (speed_print = 100, accel = 2000 — konservativ für breite
+# Druckerbasis). Werden überschrieben durch SPEED=/ACCEL= im
+# PA_CALIBRATE-Aufruf bzw. --speed/--accel auf der Kommandozeile.
+# Beispiel-Override für einen Drucker mit Eingangs-Resonanz-Kompensation:
 speed_print = 180
 accel = 3000
 ```
@@ -329,11 +341,11 @@ mit `ValueError`-Wrap für `configparser.Error`.
     Frame-Linkskante), Größe (2 × 8 mm).
   - `test_generate_beschriftet_chevrons_mit_pa_werten` — Jeder PA-Wert
     aus `pa_values` taucht als Label-Sequenz im obersten Layer auf.
-  - `test_generate_beschriftet_speed_accel_header` — "180" und "3000"
-    (oder die konfigurierten Werte) tauchen als Labels in der obersten
+  - `test_generate_beschriftet_speed_accel_header` — die konfigurierten
+    Werte (Default "100" und "2000") tauchen als Labels in der obersten
     Layer auf, vor den PA-Werten.
   - `test_generate_emittiert_set_velocity_limit_accel` — Header enthält
-    `SET_VELOCITY_LIMIT ACCEL=3000 ACCEL_TO_DECEL=1500`.
+    `SET_VELOCITY_LIMIT ACCEL=2000 ACCEL_TO_DECEL=1000`.
   - `test_generate_accel_null_emittiert_kein_velocity_limit` — Bei
     `accel=0` keine `SET_VELOCITY_LIMIT`-Zeile.
   - `test_generate_labels_nur_in_oberster_layer` — Label-Bewegungen
@@ -382,9 +394,10 @@ Marker-Kommentar.
 5. **E5: Speed/Accel-Parameter end-to-end** — `GeneratorParams.accel`
    Feld, `SET_VELOCITY_LIMIT`-Emit, Speed/Accel-Header-Labels
    (wiederverwendet aus E4-Logik), CLI/Macro/Config-Verdrahtung.
-6. **E6: Live-Test auf dem Pi** — `PA_CALIBRATE SPEED=180 ACCEL=3000`,
-   JSON-Confidence-Vergleich gegen Live-Test 1 (Erwartung: deutlich
-   > 16 %).
+6. **E6: Live-Test auf dem Pi** — `PA_CALIBRATE` (User hat 180/3000
+   in seiner `pa_analyzer.conf [generator]`-Sektion hinterlegt, daher
+   keine CLI-Override nötig), JSON-Confidence-Vergleich gegen
+   Live-Test 1 (Erwartung: deutlich > 16 %).
 
 Etappen 1-5 sind unabhängige TDD-Schritte, einzeln committbar.
 Etappe 6 ist Hardware-Validierung mit User-Freigabe (laut globaler

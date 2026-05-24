@@ -20,8 +20,8 @@
 
     <!-- Speed/Accel-Header: 2 Spalten am Anfang der Top-Bar (hochkant) -->
     <g font-size="20" font-weight="bold" fill="#fff" text-anchor="middle" font-family="Consolas, monospace">
-      <text x="45"  y="75" transform="rotate(90, 45, 75)">180</text>
-      <text x="95"  y="75" transform="rotate(90, 95, 75)">3000</text>
+      <text x="45"  y="75" transform="rotate(90, 45, 75)">100</text>
+      <text x="95"  y="75" transform="rotate(90, 95, 75)">2000</text>
     </g>
 
     <!-- PA-Labels auf der Top-Bar, hochkant (90° rotiert, Lesrichtung oben → unten) -->
@@ -183,8 +183,8 @@
     <text x="0" y="20">• <tspan font-family="Consolas, monospace" fill="#444">top_bar_height</tspan> = 4 mm · Vollfüllung über volle Pattern-Breite</text>
     <text x="0" y="38">• <tspan font-family="Consolas, monospace" fill="#444">label_glyph_height</tspan> = 0.7 mm · 5 Glyphen vertikal gestapelt ≈ 3.5 mm</text>
     <text x="0" y="56">• <tspan font-family="Consolas, monospace" fill="#444">anchor_marker_size</tspan> = 2 × 8 mm · gefülltes Rechteck links</text>
-    <text x="500" y="20">• <tspan font-family="Consolas, monospace" fill="#1668c2" font-weight="bold">speed_print</tspan> = 180 mm/s · CLI: <tspan font-family="Consolas, monospace">--speed</tspan> · Macro: <tspan font-family="Consolas, monospace">SPEED=</tspan></text>
-    <text x="500" y="38">• <tspan font-family="Consolas, monospace" fill="#1668c2" font-weight="bold">accel</tspan> = 3000 mm/s² · CLI: <tspan font-family="Consolas, monospace">--accel</tspan> · Macro: <tspan font-family="Consolas, monospace">ACCEL=</tspan></text>
+    <text x="500" y="20">• <tspan font-family="Consolas, monospace" fill="#1668c2" font-weight="bold">speed_print</tspan> = 100 mm/s · CLI: <tspan font-family="Consolas, monospace">--speed</tspan> · Macro: <tspan font-family="Consolas, monospace">SPEED=</tspan></text>
+    <text x="500" y="38">• <tspan font-family="Consolas, monospace" fill="#1668c2" font-weight="bold">accel</tspan> = 2000 mm/s² · CLI: <tspan font-family="Consolas, monospace">--accel</tspan> · Macro: <tspan font-family="Consolas, monospace">ACCEL=</tspan></text>
     <text x="500" y="56">• Emit als <tspan font-family="Consolas, monospace" fill="#444">SET_VELOCITY_LIMIT ACCEL=&lt;n&gt;</tspan> im GCode-Header</text>
   </g>
 
