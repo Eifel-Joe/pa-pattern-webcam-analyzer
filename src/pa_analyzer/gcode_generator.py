@@ -29,9 +29,18 @@ class GeneratorParams:
     pa_end: float = 0.08
     pa_step: float = 0.005
     wall_count: int = 3
-    wall_side_length: float = 30.0
+    # v3 (2026-05-24): wall_side_length 30→8, pattern_spacing 2→6.
+    # Bei v2 (wall_side_length=30) überlappten die Chevron-Arme massiv
+    # (Arme reichen 21 mm in X+Y, Apex-Abstand zwischen Gruppen nur 3.6 mm).
+    # Resultat: das gedruckte Pattern erschien im Webcam-Bild als EIN
+    # dichter >-Block ohne unterscheidbare Apexe — fill_in/fill_out-
+    # Score-Formel scheiterte (Outer-Box landete immer auf Material
+    # eines Nachbar-Chevrons). v3 mit wall_side_length=8 + pattern_spacing=6
+    # macht jeden Chevron als kompakte einzelne <-Form sichtbar
+    # (Apex-Abstand ~8 mm > 2×arm_x ~11.3 mm — keine starke Überlappung).
+    wall_side_length: float = 8.0
     corner_angle: float = 90.0
-    pattern_spacing: float = 2.0
+    pattern_spacing: float = 6.0
     num_layers: int = 4
     # Drucker / Material
     bed_x: float = 300.0
