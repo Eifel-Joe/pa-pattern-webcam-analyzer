@@ -40,3 +40,11 @@ def test_macro_uebergibt_speed_und_accel():
     assert "params.ACCEL" in text
     assert "--speed" in text
     assert "--accel" in text
+
+
+def test_macro_uebergibt_walls():
+    # PA_CALIBRATE muss WALLS= optional annehmen und an pa_generate
+    # weiterreichen. Leerer Default wie SPEED/ACCEL.
+    text = _CFG.read_text(encoding="utf-8")
+    assert "params.WALLS" in text
+    assert "--walls" in text
