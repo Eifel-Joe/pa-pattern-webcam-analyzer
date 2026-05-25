@@ -223,11 +223,21 @@ def test_generate_eigener_start_end_gcode():
 
 
 def test_generate_haengt_analyze_trigger_an():
-    # Die letzte Zeile stößt nach Druckende die Auswertung an, direkt
-    # nach dem end_gcode (PRINT_END).
+    # Die letzte Zeile stößt nach Druckende die Auswertung an, dahinter
+    # ein M400+G4-Dwell (default 30s) zwischen PRINT_END und Trigger
+    # für Filament-Cool-down (Live-Test-5-Fix 2026-05-25).
     zeilen = generate(GeneratorParams()).strip().splitlines()
     assert zeilen[-1] == "RUN_SHELL_COMMAND CMD=pa_analyze"
-    assert zeilen[-2] == "PRINT_END"
+    assert zeilen[-2] == "G4 P30000"   # 30s dwell
+    assert zeilen[-3] == "M400"        # wait for all moves
+    assert zeilen[-4] == "PRINT_END"
+
+    # Mit analyze_delay_seconds=0 fällt der Dwell weg, PRINT_END
+    # liegt direkt vor dem Trigger (alte Verhalten, Backward-Compat).
+    zeilen0 = generate(GeneratorParams(analyze_delay_seconds=0)
+                       ).strip().splitlines()
+    assert zeilen0[-1] == "RUN_SHELL_COMMAND CMD=pa_analyze"
+    assert zeilen0[-2] == "PRINT_END"
 
 
 def test_generate_leeres_analyze_gcode_kein_trigger():
@@ -1104,3 +1114,46 @@ def test_flow_rate_nicht_extrusion_multiplier_prozent():
     assert 10 < _flow_rate(p) < 25, (
         f"_flow_rate = {_flow_rate(p)} mm³/s liegt außerhalb der "
         f"plausiblen Range 10-25 für Default-Geometrie + speed=180")
+
+
+def test_generate_emittiert_g4_dwell_vor_analyze_trigger():
+    """Live-Test 5 (2026-05-25) Befund: Analyze-Trigger feuert sofort
+    nach PRINT_END, aber frisches Filament reflektiert noch (Konfidenz
+    fiel auf 3 %). Fix: M400 + G4 P<ms>-Dwell zwischen PRINT_END und
+    pa_analyze für saubere Webcam-Aufnahme.
+
+    Default analyze_delay_seconds=30 → "G4 P30000" muss vor dem
+    RUN_SHELL_COMMAND auftauchen.
+    """
+    g = generate(GeneratorParams(analyze_delay_seconds=30))
+    lines = g.splitlines()
+    analyze_idx = next(i for i, l in enumerate(lines)
+                       if "RUN_SHELL_COMMAND CMD=pa_analyze" in l)
+    # Die vorletzte Zeile vor dem Trigger muss G4 P30000 sein,
+    # die zweitletzte M400.
+    assert lines[analyze_idx - 1] == "G4 P30000", (
+        f"Erwartet 'G4 P30000' direkt vor pa_analyze, ist: "
+        f"{lines[analyze_idx - 1]}")
+    assert lines[analyze_idx - 2] == "M400", (
+        f"Erwartet 'M400' vor G4-Dwell, ist: {lines[analyze_idx - 2]}")
+
+
+def test_generate_kein_dwell_wenn_delay_null():
+    """analyze_delay_seconds=0 → kein G4-Dwell (alte Verhalten).
+    Erlaubt Power-User die Verzögerung wegzulassen wenn sie wissen
+    was sie tun (z.B. Mehr-Filament-Setups die schnell schalten)."""
+    g = generate(GeneratorParams(analyze_delay_seconds=0))
+    assert "G4 P" not in g, "G4 P sollte bei delay=0 nicht emittiert werden"
+    # pa_analyze bleibt trotzdem
+    assert "RUN_SHELL_COMMAND CMD=pa_analyze" in g
+
+
+def test_generate_kein_dwell_wenn_analyze_leer():
+    """analyze_gcode='' → kein Trigger UND kein Dwell."""
+    g = generate(GeneratorParams(analyze_gcode="", analyze_delay_seconds=30))
+    assert "G4 P30000" not in g, (
+        "G4-Dwell nur wenn analyze_gcode vorhanden")
+    # Hinweis: 'pa_analyze' (ohne CMD=) steht im Header
+    # ('; PA-Pattern erzeugt von pa_analyzer') — nur den echten
+    # Trigger-Befehl checken.
+    assert "RUN_SHELL_COMMAND CMD=pa_analyze" not in g

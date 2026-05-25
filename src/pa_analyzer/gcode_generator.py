@@ -100,6 +100,13 @@ class GeneratorParams:
     start_gcode: str = "PRINT_START EXTRUDER={temp} BED={bed_temp}"
     end_gcode: str = "PRINT_END"
     analyze_gcode: str = "RUN_SHELL_COMMAND CMD=pa_analyze"
+    # Wartezeit (Sekunden) zwischen PRINT_END und dem Analyze-Trigger.
+    # Befund Live-Test 5 (2026-05-25): direkter Trigger lief, während
+    # frisches Filament noch warm/glänzend war — Webcam-Reflexionen
+    # verschoben den Apex-Score um ~7 %-Punkte (Konfidenz 3 → 10 %
+    # nach 8 min warten). Default 30 s: Kompromiss zwischen Cool-Down
+    # und Praktikabilität. 0 = kein Delay (alte Verhalten).
+    analyze_delay_seconds: int = 30
 
 
 def _line_width(p: GeneratorParams) -> float:
@@ -716,5 +723,12 @@ def generate(params: GeneratorParams) -> str:
     # Letzte Zeile der gedruckten Datei: stößt nach Druckende die
     # Auswertung an (Spec §4 Phase 3). Leeres analyze_gcode -> kein Trailer.
     if p.analyze_gcode:
+        # Vor dem Analyze-Trigger: warten bis alle Bewegungen abgeschlossen
+        # (M400) und dann analyze_delay_seconds dwell — Filament cool-down
+        # für saubere Webcam-Aufnahme (Live-Test 5 Befund: ohne Delay
+        # liefen Score-Outlier bei noch warmen Filament-Stellen).
+        if p.analyze_delay_seconds > 0:
+            out.append("M400")
+            out.append(f"G4 P{p.analyze_delay_seconds * 1000}")
         out.append(p.analyze_gcode)
     return "\n".join(out) + "\n"
