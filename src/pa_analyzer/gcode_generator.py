@@ -465,7 +465,7 @@ def generate(params: GeneratorParams) -> str:
     retract = _retract_block(p)
     unretract = _unretract_block(p)
 
-    # Pattern-Abmessungen und Bett-Zentrierung (v2: margin=0 + left_padding)
+    # Pattern-Abmessungen und Bett-Zentrierung (margin=0 + pattern_shift)
     chevron_h = 2 * dy
     pattern_w = (
         (len(pa_values) - 1) * adv + (p.wall_count - 1) * wall_off + dx

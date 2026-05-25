@@ -533,12 +533,14 @@ def test_generate_top_bar_beruehrt_chevrons():
 
 
 def test_generate_margin_null_kein_padding_zwischen_frame_und_pattern():
-    """v2: margin = 0, aber left_padding = anchor_marker_width + 0.5
-    für den Anker-Bereich links."""
+    """margin = 0, pattern_shift = (wall_count-1)*line_spacing + lw + 0.5
+    (Orca-Stil, kein Anker-Marker mehr).
+
+    Test prüft die Y-Spannweite (orthogonal zu pattern_shift): das
+    Pattern wächst NICHT vertikal über die erwartete Höhe hinaus.
+    """
     p = GeneratorParams()
     g = generate(p)
-    # Total-Width = pattern_w + left_padding (links für Anker)
-    # Frame-Left ist bei bx0, Anker bei bx0, Chevron-Start bei bx0+left_padding.
     # Indirekt prüfbar: Y-Span ist GENAU pattern_h (kein extra margin).
     import re
     ys = []
