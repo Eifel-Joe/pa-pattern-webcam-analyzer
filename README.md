@@ -213,3 +213,13 @@ Flow-Mathematik aus Andrew Ellis' offen verfügbarem
 ab — Teil seines umfassenden
 [Print Tuning Guide](https://ellis3dp.com/Print-Tuning-Guide/). Vielen
 Dank für die ausgezeichnete Vorarbeit.
+
+Das visuelle Layout (umlaufender 3-Wandlinien-Rahmen, Top-Bar mit
+45°-Infill, Labels über Chevron-Ankern, Settings rechts auf der
+Top-Bar) ist eine eigenständige Python-Reimplementation aus den
+in [OrcaSlicer](https://github.com/SoftFever/OrcaSlicer) (AGPL-3.0)
+dokumentierten Geometrie-Routinen — speziell `draw_box()`,
+`glyph_start_x()` und `pattern_shift()` aus deren `calib.cpp`.
+**Vielen Dank an das OrcaSlicer-Team** für ihr offenes
+PA-Calibration-Pattern — ohne diese Pionierarbeit am Chevron-Layout
+wäre dieses Werkzeug nicht möglich gewesen.
