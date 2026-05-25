@@ -473,52 +473,7 @@ def _pa_labels_block(
     return out
 
 
-def _header_labels_block(
-    p: GeneratorParams, x_start: float, y_top: float,
-    print_speed: float | None = None,
-) -> list[str]:
-    """Speed/Accel-Header: 2 hochkant rotierte Spalten links der PA-Labels.
-
-    Spalte 1 zeigt speed_print (immer), Spalte 2 zeigt accel (nur wenn > 0).
-    Die Glyph-Höhe ist etwas größer als bei PA-Labels (header_glyph_height
-    vs. label_glyph_height), um einen visuellen Header-Effekt zu erzeugen.
-    Bei accel=0 entfällt die Accel-Spalte — "0" als Beschleunigung wäre
-    irreführend (kein Velocity-Limit gesetzt).
-    """
-    out: list[str] = []
-    # Spalte 1: Speed (immer vorhanden)
-    out.extend(render_label_gcode(
-        text=_fmt(p.speed_print),
-        x=x_start, y=y_top,
-        glyph_height=p.header_glyph_height,
-        glyph_width=p.header_glyph_width,
-        glyph_gap=p.label_glyph_gap,
-        line_width=_line_width(p),
-        layer_height=p.layer_height,
-        filament_diameter=p.filament_diameter,
-        extrusion_multiplier=p.extrusion_multiplier,
-        print_speed=print_speed if print_speed is not None else p.speed_print,
-        travel_speed=p.speed_travel,
-        rotation=90,
-    ))
-    # Spalte 2: Accel (nur wenn > 0 — "0" wäre irreführend)
-    if p.accel > 0:
-        x_col2 = x_start + p.header_glyph_height + p.header_column_spacing
-        out.extend(render_label_gcode(
-            text=_fmt(p.accel),
-            x=x_col2, y=y_top,
-            glyph_height=p.header_glyph_height,
-            glyph_width=p.header_glyph_width,
-            glyph_gap=p.label_glyph_gap,
-            line_width=_line_width(p),
-            layer_height=p.layer_height,
-            filament_diameter=p.filament_diameter,
-            extrusion_multiplier=p.extrusion_multiplier,
-            print_speed=print_speed if print_speed is not None else p.speed_print,
-            travel_speed=p.speed_travel,
-            rotation=90,
-        ))
-    return out
+# _header_labels_block entfernt 2026-05-25 — ersetzt durch inline Flow/Accel-Slots in generate() Layer 1 (Task 7)
 
 
 def generate(params: GeneratorParams) -> str:
@@ -694,28 +649,59 @@ def generate(params: GeneratorParams) -> str:
                     f"E{_fmt_e(e_arm)} F{layer_print_f}"
                 )
 
-        # Labels in Layer 1 (zweite Schicht, Orca-Stil): sitzen als
-        # Relief auf der einlagigen Top-Bar (Layer 0). PA=0 explizit
-        # setzen (Labels sollen visuell sauber sein, keine PA-Effekte).
-        # Druck mit first_layer_speed (langsam → klare Glyphen).
+        # Labels in Layer 1 (Orca-Stil): Relief auf der einlagigen
+        # Top-Bar. PA=0 explizit setzen, mit first_layer_speed drucken.
+        # Settings (Flow, Accel) folgen NACH den PA-Labels — auf
+        # zusätzlichen Glyph-Slots auf der gleichen Top-Bar.
         if layer == 1:
-            # Labels mit PA=0 drucken — sauber, ohne PA-Tropfen.
             out.append(f"{set_pa_prefix}0")
             label_y_top = (by1 - margin) - 0.5  # 0.5 mm Padding oben
-            header_x_start = bx0 + 0.5
             label_speed = p.first_layer_speed
-            out.extend(_header_labels_block(
-                p, header_x_start, label_y_top,
-                print_speed=label_speed,
-            ))
-            pa_labels_x_offset = (
-                2 * p.header_glyph_height + p.header_column_spacing
-                + p.header_to_labels_gap
-            )
+            # 1) PA-Labels (über jedem Chevron-Anker)
             out.extend(_pa_labels_block(
-                p, pa_values, px0 + pa_labels_x_offset, label_y_top, adv,
+                p, pa_values, px0, label_y_top, adv,
                 print_speed=label_speed,
             ))
+            # 2) Settings (Flow + Accel) NACH den PA-Labels —
+            #    glyph_start_x(num_patterns + 2) und (+ 4), Orca-Stil.
+            #    (Slot-Sprung von 2 lässt visuelle Lücke nach letztem PA-Label.)
+            num_patterns = len(pa_values)
+            flow_x = (px0 + (num_patterns + 2) * adv
+                      + (p.wall_count - 1) * wall_off / 2
+                      - p.label_glyph_height / 2)
+            accel_x = (px0 + (num_patterns + 4) * adv
+                       + (p.wall_count - 1) * wall_off / 2
+                       - p.label_glyph_height / 2)
+            flow_value = p.extrusion_multiplier * 100  # als Prozent
+            out.extend(render_label_gcode(
+                text=_fmt(flow_value),
+                x=flow_x, y=label_y_top,
+                glyph_height=p.label_glyph_height,
+                glyph_width=p.label_glyph_width,
+                glyph_gap=p.label_glyph_gap,
+                line_width=_line_width(p),
+                layer_height=p.layer_height,
+                filament_diameter=p.filament_diameter,
+                extrusion_multiplier=p.extrusion_multiplier,
+                print_speed=label_speed,
+                travel_speed=p.speed_travel,
+                rotation=90,
+            ))
+            if p.accel > 0:
+                out.extend(render_label_gcode(
+                    text=_fmt(p.accel),
+                    x=accel_x, y=label_y_top,
+                    glyph_height=p.label_glyph_height,
+                    glyph_width=p.label_glyph_width,
+                    glyph_gap=p.label_glyph_gap,
+                    line_width=_line_width(p),
+                    layer_height=p.layer_height,
+                    filament_diameter=p.filament_diameter,
+                    extrusion_multiplier=p.extrusion_multiplier,
+                    print_speed=label_speed,
+                    travel_speed=p.speed_travel,
+                    rotation=90,
+                ))
 
     # End-Sequenz: Retract, Z-Raise, optionaler Cooldown (Sicherheits-
     # netz; viele PRINT_END-Macros machen das selbst — dann

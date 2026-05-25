@@ -1009,3 +1009,58 @@ def test_label_x_position_ist_chevron_anker_nicht_mitte():
         f"(Wall-Cluster-Mitte minus Glyph-Höhe/2). Aktuelle Formel "
         f"zentriert ggf. noch über Chevron-Tip — Differenz "
         f"{abs(x - expected_x_j0):.3f} mm")
+
+
+def test_settings_header_liegt_rechts_von_letztem_pa_label():
+    """Flow- und Accel-Labels sollen NACH dem letzten PA-Label
+    auf der Top-Bar stehen (Orca-Stil), nicht davor.
+
+    Test prüft präzise: das LETZTE Label-Travel-X muss RECHTS vom
+    rechtesten PA-Label-X liegen (= Flow/Accel als "extra slots"
+    nach dem PA-Cluster). Mit Header-Vor-PA-Layout wäre das letzte
+    Travel-X gleich dem rechtesten PA-Label-X (Header steht links).
+    """
+    import re
+    import math
+    from pa_analyzer.gcode_generator import (
+        GeneratorParams, generate, _wall_x_offset, _group_advance,
+        _pa_values,
+    )
+    p = GeneratorParams(num_layers=2)
+    g = generate(p)
+    lines = g.splitlines()
+    z04_idx = next(i for i, l in enumerate(lines) if l.startswith("G1 Z0.4"))
+    after_z04 = lines[z04_idx:]
+    set_pa_zero_idx = next(i for i, l in enumerate(after_z04)
+                           if re.search(r"ADVANCE=0(?:\.0+)?\b", l))
+    label_moves = after_z04[set_pa_zero_idx + 1:]
+    # X-Werte aller Travel-Moves (G1 X ohne E) im Label-Bereich
+    travel_xs = []
+    for l in label_moves:
+        if l.startswith("G1 X") and " E" not in l:
+            m = re.search(r"X([\d.-]+)", l)
+            if m:
+                travel_xs.append(float(m.group(1)))
+    # Rechtestes PA-Label (rechtester chevron, j=num_patterns-1):
+    # ohne Settings wäre das das letzte Travel überhaupt.
+    pa_values = _pa_values(p)
+    num_patterns = len(pa_values)
+    wall_off = _wall_x_offset(p)
+    adv = _group_advance(p)
+    # Aus dem GCode den px0 holen
+    frame_line = next(l for l in lines if "PA_ANALYZER_FRAME" in l)
+    bx0 = float(re.search(r"X0=([\d.-]+)", frame_line).group(1))
+    px0 = bx0 + p.anchor_marker_width + 0.5
+    rightmost_pa_x = (
+        px0 + (num_patterns - 1) * adv
+        + (p.wall_count - 1) * wall_off / 2
+        - p.label_glyph_height / 2)
+    # Es muss MINDESTENS ein Label-Travel deutlich RECHTS vom
+    # rechtesten PA-Label liegen (= Flow oder Accel).
+    rightmost_label = max(travel_xs)
+    assert rightmost_label > rightmost_pa_x + adv, (
+        f"Rechtester Label-Travel X={rightmost_label:.2f}, rechtester "
+        f"PA-Label X={rightmost_pa_x:.2f}. Differenz "
+        f"{rightmost_label - rightmost_pa_x:.2f} ≤ group_advance "
+        f"({adv:.2f}). Settings sind nicht RECHTS der PA-Labels "
+        f"(stehen wohl noch links davor).")
