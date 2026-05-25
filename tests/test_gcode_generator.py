@@ -973,3 +973,39 @@ def test_top_bar_hat_luecke_zum_frame():
         f"Lücke Frame-Top→Top-Bar-Bottom={actual_gap:.3f} mm, "
         f"erwartet {expected_gap:.3f} mm (line_spacing). "
         f"frame_y_max={frame_y_max:.3f}, tb_y_bottom={tb_y_bottom:.3f}")
+
+
+def test_label_x_position_ist_chevron_anker_nicht_mitte():
+    """Labels sollen über dem Chevron-Wall-Cluster-Mitte stehen
+    (= Orca's glyph_start_x), nicht über der Chevron-Tip-Mitte (= alt).
+
+    Differenz: die alte Mitte-über-Tip-Variante addierte `dx/2` zur
+    Wall-Cluster-Mitte (~13 mm bei Default-Geometrie). Neue Variante
+    nutzt nur Wall-Cluster-Mitte, ignoriert die Tip-Extension.
+
+    Test ruft _pa_labels_block direkt auf (isoliert von generate()'s
+    Header-Layout, das Task 7 separat regelt).
+    """
+    import re
+    from pa_analyzer.gcode_generator import (
+        _pa_labels_block,
+    )
+    p = GeneratorParams()
+    pa_values = [0.0, 0.01, 0.02]
+    px0 = 100.0  # beliebiger Pattern-Start
+    label_y = 165.0
+    wall_off = _wall_x_offset(p)
+    adv = _group_advance(p)
+    expected_x_j0 = (px0 + 0 * adv + (p.wall_count - 1) * wall_off / 2
+                     - p.label_glyph_height / 2)
+    lines = _pa_labels_block(p, pa_values, px0, label_y, adv)
+    # Erste extrudierte G1 = erste Glyph-Linie. Davor steht ein Travel
+    # zum Glyph-Start. Wir nehmen den ERSTEN Travel-Move (G1 X... ohne E).
+    first_travel = next(l for l in lines
+                        if l.startswith("G1 X") and " E" not in l)
+    x = float(re.search(r"X([\d.-]+)", first_travel).group(1))
+    assert abs(x - expected_x_j0) < 0.05, (
+        f"Label j=0 startet bei X={x:.3f}, erwartet {expected_x_j0:.3f} "
+        f"(Wall-Cluster-Mitte minus Glyph-Höhe/2). Aktuelle Formel "
+        f"zentriert ggf. noch über Chevron-Tip — Differenz "
+        f"{abs(x - expected_x_j0):.3f} mm")

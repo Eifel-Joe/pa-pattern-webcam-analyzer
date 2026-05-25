@@ -429,27 +429,33 @@ def _pa_labels_block(
 ) -> list[str]:
     """Hochkant rotierte PA-Labels auf der Top-Bar.
 
-    Ein Label pro Chevron-Gruppe. Position: über dem Chevron, label_y_top
-    ist die Y-Koordinate der oberen Glyph-Kante (label läuft nach unten,
-    weil rotation=90).
+    Position pro Label: Label-Start-X = Chevron-Wall-Cluster-Mitte
+    minus halbe Glyph-Höhe (= Orca's glyph_start_x-Logik, siehe
+    reference/orca_calib.cpp Linie 821-844). Damit sitzt das Label
+    über dem Anker-Punkt am Frame, NICHT über der weiter nach
+    rechts ausladenden Chevron-Spitze.
+
+    NOT-TO-DO: Label über Chevron-Tip-Mitte zentrieren (= alte
+    Implementation mit `+ dx` im Offset). User-Anforderung
+    2026-05-25 explizit: "an den Ankerpunkt am Frame, damit man
+    es überhaupt zuordnen könnte". Mittellage über Tip führte
+    dazu dass die visuelle Zuordnung Label↔Chevron unklar war
+    (Labels überlappten teilweise mit Nachbar-Chevrons).
     """
     out: list[str] = []
+    wall_off = _wall_x_offset(p)
+    speed = print_speed if print_speed is not None else p.speed_print
     for j, pa in enumerate(pa_values):
-        # Nur jeden label_stride-ten PA-Wert beschriften (Default 2).
-        # Zwischenwerte ergeben sich kontextual aus den beschrifteten
-        # Nachbarn — spart Platz und macht jedes Label deutlich lesbarer.
         if j % p.label_stride != 0:
             continue
-        # X-Mitte der Chevron-Gruppe j.
-        gx_center = px0 + j * group_advance + (
-            (p.wall_count - 1) * _wall_x_offset(p) + _chevron_deltas(p)[0]
-        ) / 2
-        # Bei rotation=90 ist der Cursor-Anker die linke obere Ecke
-        # der ersten Glyphe. Wir möchten das Label horizontal an der
-        # Chevron-Mitte zentriert — die rotierte Glyph-Höhe wird nach
-        # rechts in X gerendert, also Start x = gx_center -
-        # label_glyph_height/2.
-        x_start = gx_center - p.label_glyph_height / 2
+        # glyph_start_x(j) = px0 + j*group_advance
+        #   + (wall_count-1)*wall_off/2 - glyph_len_x/2
+        # Entspricht Orca's Logik: Label über Wall-Cluster-Mitte,
+        # nicht über der Chevron-Tip-Mitte (die um dx/2 weiter rechts
+        # läge). Siehe reference/orca_calib.cpp Linie 821-844.
+        x_start = (px0 + j * group_advance
+                   + (p.wall_count - 1) * wall_off / 2
+                   - p.label_glyph_height / 2)
         out.extend(render_label_gcode(
             text=_fmt(pa),
             x=x_start, y=label_y_top,
@@ -460,7 +466,7 @@ def _pa_labels_block(
             layer_height=p.layer_height,
             filament_diameter=p.filament_diameter,
             extrusion_multiplier=p.extrusion_multiplier,
-            print_speed=print_speed if print_speed is not None else p.speed_print,
+            print_speed=speed,
             travel_speed=p.speed_travel,
             rotation=90,
         ))
