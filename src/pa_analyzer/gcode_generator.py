@@ -206,14 +206,20 @@ def _top_bar_block(
     y_low: float, y_high: float,
     travel_to_fn, print_f: int,
 ) -> list[str]:
-    """Vollfüllung der Top-Bar als Linien-Stadion.
+    """Vollfüllung der Top-Bar als Linien-Stadion (Boustrophedon).
 
-    Zieht horizontale Linien Y=y_low bis Y=y_high im Abstand
-    `line_width`, abwechselnd in X-Richtung (Boustrophedon = Pflüge
-    drehen ohne Travel).
+    Zieht horizontale Linien bei Y=y_low + i*lw, abwechselnd nach
+    rechts/links, mit kurzen vertikalen Verbindungs-Linien dazwischen
+    (echtes Stadion-Pattern). Die alte Version ohne Verbindungs-Moves
+    erzeugte stark diagonale Linien (~45° wenn x_span gross), weil die
+    Position nach jeder horizontalen Linie an der gegenüberliegenden
+    X-Kante war und die nächste "horizontale" Linie eine DIAGONALE
+    Quer-Bewegung wurde (Befund Live-Test 5 / 2026-05-25).
     """
     lw = _line_width(p)
     e_h = _extrusion(x1 - x0, lw, p.layer_height,
+                     p.filament_diameter, p.extrusion_multiplier)
+    e_v = _extrusion(lw, lw, p.layer_height,
                      p.filament_diameter, p.extrusion_multiplier)
     out: list[str] = []
     n_lines = max(1, int(round((y_high - y_low) / lw)))
@@ -222,12 +228,16 @@ def _top_bar_block(
     rechts = True
     for i in range(n_lines):
         y = y_low + i * lw
-        if rechts:
-            out.append(f"G1 X{_fmt(x1)} Y{_fmt(y)} "
-                       f"E{_fmt_e(e_h)} F{print_f}")
-        else:
-            out.append(f"G1 X{_fmt(x0)} Y{_fmt(y)} "
-                       f"E{_fmt_e(e_h)} F{print_f}")
+        # Horizontale Linie auf y (nur X ändert sich, Y bleibt vom
+        # letzten Wende-Move auf y).
+        x_target = x1 if rechts else x0
+        out.append(f"G1 X{_fmt(x_target)} Y{_fmt(y)} "
+                   f"E{_fmt_e(e_h)} F{print_f}")
+        # Vertikale Wende-Linie zur nächsten Reihe (lw hoch), außer
+        # nach der letzten Linie. Bleibt am selben X — nur Y +lw.
+        if i < n_lines - 1:
+            out.append(f"G1 X{_fmt(x_target)} Y{_fmt(y + lw)} "
+                       f"E{_fmt_e(e_v)} F{print_f}")
         rechts = not rechts
     return out
 
@@ -269,6 +279,7 @@ def _anchor_marker_block(
 def _pa_labels_block(
     p: GeneratorParams, pa_values: list[float], px0: float,
     label_y_top: float, group_advance: float,
+    print_speed: float | None = None,
 ) -> list[str]:
     """Hochkant rotierte PA-Labels auf der Top-Bar.
 
@@ -303,7 +314,7 @@ def _pa_labels_block(
             layer_height=p.layer_height,
             filament_diameter=p.filament_diameter,
             extrusion_multiplier=p.extrusion_multiplier,
-            print_speed=p.speed_print,
+            print_speed=print_speed if print_speed is not None else p.speed_print,
             travel_speed=p.speed_travel,
             rotation=90,
         ))
@@ -312,6 +323,7 @@ def _pa_labels_block(
 
 def _header_labels_block(
     p: GeneratorParams, x_start: float, y_top: float,
+    print_speed: float | None = None,
 ) -> list[str]:
     """Speed/Accel-Header: 2 hochkant rotierte Spalten links der PA-Labels.
 
@@ -333,7 +345,7 @@ def _header_labels_block(
         layer_height=p.layer_height,
         filament_diameter=p.filament_diameter,
         extrusion_multiplier=p.extrusion_multiplier,
-        print_speed=p.speed_print,
+        print_speed=print_speed if print_speed is not None else p.speed_print,
         travel_speed=p.speed_travel,
         rotation=90,
     ))
@@ -350,7 +362,7 @@ def _header_labels_block(
             layer_height=p.layer_height,
             filament_diameter=p.filament_diameter,
             extrusion_multiplier=p.extrusion_multiplier,
-            print_speed=p.speed_print,
+            print_speed=print_speed if print_speed is not None else p.speed_print,
             travel_speed=p.speed_travel,
             rotation=90,
         ))
@@ -492,15 +504,17 @@ def generate(params: GeneratorParams) -> str:
         # Lüfter nach Layer 1 auf den normalen Wert umschalten
         if layer == 1 and p.fan_speed != p.fan_speed_layer1:
             out.append(f"M106 S{round(p.fan_speed * 255)}")
-        # Top-Bar in jedem Layer (CV-Anker für orientation.py).
-        # v2: margin=0, Top-Bar spannt über gesamte Frame-Breite (bx0..bx1),
-        # einschließlich left_padding-Bereich (Anker überschneidet Top-Bar
-        # nicht in Y — kein Problem).
-        out.extend(_top_bar_block(
-            p, bx0, bx1,
-            top_bar_y_low, top_bar_y_high,
-            travel_to, layer_print_f,
-        ))
+        # Top-Bar NUR in Layer 0 (Orca-Stil): einzelne dünne Schicht
+        # als Untergrund für die Labels in Layer 1. Spart Material,
+        # macht die Labels in Layer 1 als sauberes Relief sichtbar.
+        # CV-Pipeline (orientation.py) sieht die Top-Bar von oben
+        # unverändert — Schicht-Höhe egal.
+        if layer == 0:
+            out.extend(_top_bar_block(
+                p, bx0, bx1,
+                top_bar_y_low, top_bar_y_high,
+                travel_to, layer_print_f,
+            ))
         # Anker-Marker links angedockt an Frame-Left (bx0).
         # v2: margin=0, Anker sitzt direkt an der Frame-Linie.
         # y_center = Chevron-Mitte (zwischen py0 und py0 + 2*dy).
@@ -527,29 +541,27 @@ def generate(params: GeneratorParams) -> str:
                     f"E{_fmt_e(e_arm)} F{layer_print_f}"
                 )
 
-        # Labels nur in oberster Layer (sitzen als Relief auf der Top-Bar).
-        if layer == p.num_layers - 1:
-            # Label-Y-Top = obere Top-Bar-Innenkante (oben in der Bar,
-            # Labels laufen nach unten in die Bar hinein).
-            label_y_top = top_bar_y_high - 0.5  # 0.5 mm Padding zum oberen Rand
-            # Speed/Accel-Header VOR den PA-Labels (ganz links auf der Top-Bar).
-            # 0.5 mm Padding zur Frame-Left-Kante (v2: margin=0, also bx0).
+        # Labels in Layer 1 (zweite Schicht, Orca-Stil): sitzen als
+        # Relief auf der einlagigen Top-Bar (Layer 0). PA=0 explizit
+        # setzen (Labels sollen visuell sauber sein, keine PA-Effekte).
+        # Druck mit first_layer_speed (langsam → klare Glyphen).
+        if layer == 1:
+            # Labels mit PA=0 drucken — sauber, ohne PA-Tropfen.
+            out.append(f"{set_pa_prefix}0")
+            label_y_top = top_bar_y_high - 0.5  # 0.5 mm Padding oben
             header_x_start = bx0 + 0.5
+            label_speed = p.first_layer_speed
             out.extend(_header_labels_block(
                 p, header_x_start, label_y_top,
+                print_speed=label_speed,
             ))
-            # PA-Labels beginnen nach den Header-Spalten + Trenn-Lücke.
-            # 2 Header-Spalten × header_glyph_height + header_column_spacing
-            # + header_to_labels_gap. Dadurch verschieben sich die PA-Labels
-            # nach rechts — sie stehen nicht mehr exakt über den Chevrons,
-            # sondern um pa_labels_x_offset nach rechts versetzt (gewollt:
-            # der Header braucht Platz links).
             pa_labels_x_offset = (
                 2 * p.header_glyph_height + p.header_column_spacing
                 + p.header_to_labels_gap
             )
             out.extend(_pa_labels_block(
                 p, pa_values, px0 + pa_labels_x_offset, label_y_top, adv,
+                print_speed=label_speed,
             ))
 
     # End-Sequenz: Retract, Z-Raise, optionaler Cooldown (Sicherheits-
