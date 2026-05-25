@@ -385,45 +385,7 @@ def _draw_box(
     return out
 
 
-def _top_bar_block(
-    p: GeneratorParams, x0: float, x1: float,
-    y_low: float, y_high: float,
-    travel_to_fn, print_f: int,
-) -> list[str]:
-    """Vollfüllung der Top-Bar als Linien-Stadion (Boustrophedon).
-
-    Zieht horizontale Linien bei Y=y_low + i*lw, abwechselnd nach
-    rechts/links, mit kurzen vertikalen Verbindungs-Linien dazwischen
-    (echtes Stadion-Pattern). Die alte Version ohne Verbindungs-Moves
-    erzeugte stark diagonale Linien (~45° wenn x_span gross), weil die
-    Position nach jeder horizontalen Linie an der gegenüberliegenden
-    X-Kante war und die nächste "horizontale" Linie eine DIAGONALE
-    Quer-Bewegung wurde (Befund Live-Test 5 / 2026-05-25).
-    """
-    lw = _line_width(p)
-    e_h = _extrusion(x1 - x0, lw, p.layer_height,
-                     p.filament_diameter, p.extrusion_multiplier)
-    e_v = _extrusion(lw, lw, p.layer_height,
-                     p.filament_diameter, p.extrusion_multiplier)
-    out: list[str] = []
-    n_lines = max(1, int(round((y_high - y_low) / lw)))
-    # Travel zum Start
-    out.extend(travel_to_fn(x0, y_low))
-    rechts = True
-    for i in range(n_lines):
-        y = y_low + i * lw
-        # Horizontale Linie auf y (nur X ändert sich, Y bleibt vom
-        # letzten Wende-Move auf y).
-        x_target = x1 if rechts else x0
-        out.append(f"G1 X{_fmt(x_target)} Y{_fmt(y)} "
-                   f"E{_fmt_e(e_h)} F{print_f}")
-        # Vertikale Wende-Linie zur nächsten Reihe (lw hoch), außer
-        # nach der letzten Linie. Bleibt am selben X — nur Y +lw.
-        if i < n_lines - 1:
-            out.append(f"G1 X{_fmt(x_target)} Y{_fmt(y + lw)} "
-                       f"E{_fmt_e(e_v)} F{print_f}")
-        rechts = not rechts
-    return out
+# _top_bar_block entfernt 2026-05-25 — ersetzt durch _draw_box(is_filled=True) (Task 5)
 
 
 def _anchor_marker_block(
@@ -589,9 +551,9 @@ def generate(params: GeneratorParams) -> str:
     by1 = by0 + pattern_h + 2 * margin
     px0 = bx0 + margin + left_padding      # Chevron-Start nach Anker-Bereich
     py0 = by0 + margin                     # Chevron-Bottom
-    # Top-Bar-Y-Bereich:
+    # Top-Bar-Y-Bereich (y_high wird nicht mehr separat berechnet —
+    # tb_height wird in der Layer-Schleife aus top_bar_height - line_spacing ermittelt):
     top_bar_y_low = by1 - margin - p.top_bar_height
-    top_bar_y_high = by1 - margin
 
     def travel_to(x: float, y: float) -> list[str]:
         """Travel mit Retract+De-Retract (Ellis-Stil)."""
@@ -685,16 +647,20 @@ def generate(params: GeneratorParams) -> str:
         # Lüfter nach Layer 1 auf den normalen Wert umschalten
         if layer == 1 and p.fan_speed != p.fan_speed_layer1:
             out.append(f"M106 S{round(p.fan_speed * 255)}")
-        # Top-Bar NUR in Layer 0 (Orca-Stil): einzelne dünne Schicht
-        # als Untergrund für die Labels in Layer 1. Spart Material,
-        # macht die Labels in Layer 1 als sauberes Relief sichtbar.
-        # CV-Pipeline (orientation.py) sieht die Top-Bar von oben
-        # unverändert — Schicht-Höhe egal.
+        # Top-Bar NUR in Layer 0 (Orca-Stil): 3 Perimeter + 45°-Infill,
+        # mit ~0.5 mm Lücke (=line_spacing) zwischen Frame-Top (=
+        # top_bar_y_low) und Top-Bar-Bottom — das verhindert
+        # Verschmelzung der Wände beider Boxen im Slicer-Output.
         if layer == 0:
-            out.extend(_top_bar_block(
-                p, bx0, bx1,
-                top_bar_y_low, top_bar_y_high,
-                travel_to, layer_print_f,
+            line_spacing = (
+                _line_width(p) - p.layer_height * (1 - math.pi / 4))
+            tb_y0_gapped = top_bar_y_low + line_spacing
+            tb_height = p.top_bar_height - line_spacing
+            out.extend(_draw_box(
+                p, bx0, tb_y0_gapped,
+                width=bx1 - bx0, height=tb_height,
+                n_perimeters=p.wall_count, is_filled=True,
+                travel_to_fn=travel_to, print_f=layer_print_f,
             ))
         # Anker-Marker links angedockt an Frame-Left (bx0).
         # v2: margin=0, Anker sitzt direkt an der Frame-Linie.
@@ -729,7 +695,7 @@ def generate(params: GeneratorParams) -> str:
         if layer == 1:
             # Labels mit PA=0 drucken — sauber, ohne PA-Tropfen.
             out.append(f"{set_pa_prefix}0")
-            label_y_top = top_bar_y_high - 0.5  # 0.5 mm Padding oben
+            label_y_top = (by1 - margin) - 0.5  # 0.5 mm Padding oben
             header_x_start = bx0 + 0.5
             label_speed = p.first_layer_speed
             out.extend(_header_labels_block(

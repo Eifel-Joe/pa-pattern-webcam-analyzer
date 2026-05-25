@@ -525,19 +525,15 @@ def test_generate_labels_nur_in_oberster_layer():
         f"Label-Layer 1 ({moves_layer1} G1) nicht deutlich größer als "
         f"label-freie Layer 2 ({moves_layer2} G1) — Labels fehlen.")
 
-    # B) Zwei label-freie Layer (Layer 0-Block und Layer 1) sind annähernd
-    #    gleich groß — beweist, dass Differenz aus Labels stammt, nicht
-    #    aus anderem layerspezifischem Code.
+    # B) Layer 0 hat Top-Bar (3-Perimeter + 45°-Infill) — erheblich mehr Moves
+    #    als Layer 1 (Labels + Chevrons) oder Layer 2 (nur Chevrons). Diese
+    #    Ungleichheit ist nach Task 5 (Orca-Stil-Infill) beabsichtigt.
+    #    Wir prüfen nur die Mindest-Bewegungsanzahl: Layer 0 muss mehr Moves
+    #    als Layer 1 haben (Infill-Box > reine Chevrons).
     moves_layer0_block = _g1_count(z_layer0, z_layer1)
-    # Layer 0 hat Top-Bar (viele Moves), Layer 1 hat Labels (auch viele).
-    # Layer 0 + Top-Bar ≈ Layer 1 + Labels (Top-Bar-Stadion und Labels
-    # sind in der Größenordnung ähnlich). Erlauben einen großzügigen
-    # Toleranz-Bereich.
-    assert abs(moves_layer0_block - moves_layer1) < 250, (
-        f"Layer-0-Block ({moves_layer0_block} G1) und Label-Layer 1 "
-        f"({moves_layer1} G1) weichen um "
-        f"{abs(moves_layer0_block - moves_layer1)} ab — "
-        "ungewöhnlich große Differenz.")
+    assert moves_layer0_block > moves_layer1, (
+        f"Layer 0 ({moves_layer0_block} G1) sollte durch Top-Bar-Infill "
+        f"mehr Moves haben als Label-Layer 1 ({moves_layer1} G1).")
 
 
 def test_generate_beschriftet_speed_accel_header():
@@ -575,61 +571,6 @@ def test_generate_kein_accel_kein_header_label():
         f"als Ohne-Accel ({g1_ohne}) — Accel-Header wird nicht "
         "konditional emittiert")
 
-
-def test_generate_drei_linien_frame_kein_rechts():
-    """Frame ist 3-Linien-"["-Form: links + Top-Bar (implizit oben) + unten.
-    KEIN expliziter Frame-Right-Strich — Chevron-Spitzen bilden rechten Rand.
-
-    Erwartung: im GCode gibt es genau 2 Frame-Strich-G1-Moves
-    (links vertikal, unten horizontal). Die Top-Bar ist als
-    Vollfüllung gerendert (mehrere Linien); die oberste Linie der
-    Top-Bar fungiert als Frame-Top.
-    """
-    p = GeneratorParams()
-    g = generate(p)
-    # Hole alle G1-Bewegungen aus dem ERSTEN Layer (vor erstem
-    # SET_PRESSURE_ADVANCE) — das umfasst Purge, Frame, Top-Bar, Anker.
-    lines = g.splitlines()
-    pa_idx = next(i for i, l in enumerate(lines)
-                  if "SET_PRESSURE_ADVANCE" in l)
-    pre_pa = lines[:pa_idx]
-    # Zähle horizontale Frame-Bottom-Linie und vertikale Frame-Left-Linie.
-    # Frame-Bottom: einzige extrudierende horizontale Linie auf y == by0
-    # Frame-Left: einzige extrudierende vertikale Linie auf x == bx0
-    # Wir prüfen einfach: KEINE extrudierende Linie liegt bei x == bx1
-    # (das wäre Frame-Right — und das gibt's nicht mehr).
-    # Approximation: Bett-Mitte ist 150,150 (bed_x/y default 300/300).
-    # Pattern-Breite ~75mm, also bx1 ≈ 150 + 37.5 = 187.5.
-    # Wir suchen explizit nach Moves die x ≈ 187 erreichen UND nicht
-    # zu einem Chevron-Apex gehören (chevron-apex hat charakteristisches Y).
-    import re
-    # Sammle alle (x, y, e) für extrudierende Pre-PA Moves.
-    extrudiert = []
-    for line in pre_pa:
-        m = re.match(r"^G1 X([\d.-]+) Y([\d.-]+).*E([\d.-]+)", line)
-        if m:
-            extrudiert.append((float(m.group(1)), float(m.group(2))))
-    assert len(extrudiert) > 0, "Keine extrudierten Frame/Top-Bar-Moves"
-    # Maximales X im Pre-PA-Bereich = Frame-Right wäre hier
-    max_x = max(x for x, y in extrudiert)
-    # Wenn es einen Frame-Right gäbe: viele Moves bei max_x mit
-    # verschiedenen Y (vertikale Frame-Linie). Wir checken: max_x sollte
-    # bei Top-Bar-Linien auftauchen (mehrere horizontale Moves enden bei
-    # max_x), ABER nicht als isolierte vertikale Linie.
-    # Vereinfachung: zähle MOVES bei x == max_x mit unterschiedlichen Y.
-    # Bei einem 4-Linien-Frame wären das exakt 2 Moves (oben-rechts, unten-rechts).
-    # Bei 3-Linien-Frame (kein rechts): die max_x-Moves sind Top-Bar-Endpunkte
-    # (mehrere Y-Werte, weil mehrere Top-Bar-Linien dort enden).
-    moves_at_max_x = [(x, y) for x, y in extrudiert if abs(x - max_x) < 0.01]
-    # Mehr als 2 Moves bei max_x → Top-Bar-Stadion-Füllung (viele Linien
-    # enden dort, je nach Boustrophedon-Richtung). Bei einem expliziten
-    # Frame-Right wären es genau 2 (oben-rechts, unten-rechts).
-    # Tatsächlich Top-Bar hat ~26 Linien (12mm/0.45mm), ungefähr die
-    # Hälfte endet bei max_x → ~13 Moves.
-    assert len(moves_at_max_x) > 5, (
-        f"Nur {len(moves_at_max_x)} Moves bei max_x={max_x:.2f} — "
-        f"deutet auf einen expliziten Frame-Right hin (3-Linien-Frame "
-        f"hätte deutlich mehr durch Top-Bar-Boustrophedon)")
 
 
 def test_generate_top_bar_beruehrt_chevrons():
@@ -954,3 +895,81 @@ def test_frame_hat_drei_umlaufende_wandlinien():
         f"Frame-Ring nicht geschlossen — 4. Print-Move endet bei "
         f"({end_x}, {end_y}), erwartet Start ({bx0}, {by0}). Das alte "
         f'"["-Frame hatte genau dieses Problem (kein Rechts/Oben).')
+
+
+def test_top_bar_hat_45grad_infill():
+    """Top-Bar enthält 45°-Infill-Linien (Orca-Stil),
+    nicht Stadion-Boustrophedon."""
+    p = GeneratorParams(num_layers=1)
+    g = generate(p)
+    # 45°-Infill emittiert "Fill: Print up/left" und "Fill: Print down/right"
+    # Kommentare. Stadion-Code hatte das nicht.
+    assert "Fill: Print" in g, (
+        "Top-Bar hat keine 45°-Fill-Kommentare — vermutlich noch alter "
+        "Stadion-Boustrophedon-Code aktiv.")
+    # Zähle Fill-Linien: für 84×13.5 mm Top-Bar mit 3 Perimetern und
+    # spacing_45 ≈ 0.73 mm sind das ~80-100 Diagonalen.
+    fill_print_count = g.count("Fill: Print")
+    assert fill_print_count > 30, (
+        f"Erwartet > 30 Fill-Linien, hat {fill_print_count}")
+
+
+def test_top_bar_hat_luecke_zum_frame():
+    """Orca-Stil: zwischen Frame-Top (= top_bar_y_low) und Top-Bar-Bottom
+    liegt eine Lücke von ~line_spacing (~0.5 mm), die ein Verschmelzen der
+    beiden Wand-Reihen verhindert.
+
+    Test prüft: der "Fill: Move to fill start"-Move der Top-Bar liegt
+    mindestens line_spacing über dem höchsten Y der Frame-Perimeter-Moves.
+
+    Struktur im GCode (num_layers=1):
+    - Frame-Perimeter: vor G1 Z0.2 (vor Layer-Schleife)
+    - G1 Z0.2 (Layer 0 beginnt)
+    - Top-Bar-Perimeter: nach G1 Z0.2, vor Fill:
+    - Fill: Move to fill start (Infill der Top-Bar)
+    Der Frame endet bei top_bar_y_low. Die Top-Bar startet bei
+    top_bar_y_low + line_spacing (= tb_y0_gapped).
+    """
+    import math
+    import re
+    p = GeneratorParams(num_layers=1)
+    g = generate(p)
+    lines = g.splitlines()
+    # Frame-Block: zwischen PA_ANALYZER_FRAME-Marker und dem nächsten G1-Z-Move.
+    # Der Frame liegt NACH dem Pre-Loop-Z (erste G1 Z0.2) und VOR dem
+    # Layer-0-Z (zweite G1 Z0.2 innerhalb der Layer-Schleife).
+    frame_marker_idx = next(i for i, l in enumerate(lines)
+                            if "PA_ANALYZER_FRAME" in l)
+    # Nächste G1-Z-Linie nach dem Frame-Marker = Beginn der Layer-Schleife
+    z_layer_loop_idx = next(i for i, l in enumerate(lines)
+                            if i > frame_marker_idx
+                            and l.startswith("G1 Z") and " E" not in l)
+    frame_ys = []
+    for l in lines[frame_marker_idx:z_layer_loop_idx]:
+        m = re.match(r"^G1 X[\d.-]+ Y([\d.-]+).+E", l)
+        if m:
+            frame_ys.append(float(m.group(1)))
+    assert frame_ys, "Keine extrudierten Frame-Moves zwischen FRAME-Marker und Z-Loop"
+    frame_y_max = max(frame_ys)
+    # Top-Bar-Y-Min: niedrigstes Y-Perimeter der Top-Bar-Box.
+    # Der erste Travel-Move nach dem Z-Loop-Z hat Y=tb_y0_gapped
+    # (der äußerste Perimeter startet am Bottom der Top-Bar-Box).
+    # Format: "G1 X... Y... F7200" (Travel, kein E).
+    tb_travel_y: float | None = None
+    for l in lines[z_layer_loop_idx + 1:z_layer_loop_idx + 5]:
+        m = re.match(r"^G1 X[\d.-]+ Y([\d.-]+) F\d+$", l)
+        if m:
+            tb_travel_y = float(m.group(1))
+            break
+    assert tb_travel_y is not None, (
+        "Kein Travel-Move (G1 X Y F ohne E) in den ersten 4 Zeilen nach "
+        f"Layer-Loop-Z-Move (Zeile {z_layer_loop_idx}). "
+        "Prüfe GCode-Struktur.")
+    tb_y_bottom = tb_travel_y
+    expected_gap = (
+        _line_width(p) - p.layer_height * (1 - math.pi / 4))
+    actual_gap = tb_y_bottom - frame_y_max
+    assert abs(actual_gap - expected_gap) < 0.05, (
+        f"Lücke Frame-Top→Top-Bar-Bottom={actual_gap:.3f} mm, "
+        f"erwartet {expected_gap:.3f} mm (line_spacing). "
+        f"frame_y_max={frame_y_max:.3f}, tb_y_bottom={tb_y_bottom:.3f}")
