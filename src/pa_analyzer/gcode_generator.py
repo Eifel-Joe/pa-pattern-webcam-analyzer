@@ -644,24 +644,21 @@ def generate(params: GeneratorParams) -> str:
             f"G1 X{_fmt(p.purge_x_margin + p.purge_length)} "
             f"Y{_fmt(purge_y)} E{_fmt_e(e_purge)} F{purge_f}")
 
-    # Rahmen-Box (v2: 3-Linien-"["-Form — links + unten;
-    # oben implizit durch Top-Bar-Oberkante, kein expliziter Rechts-Strich)
-    e_v = _extrusion(by1 - by0, lw, p.layer_height,
-                     p.filament_diameter, p.extrusion_multiplier)
-    e_h = _extrusion(bx1 - bx0, lw, p.layer_height,
-                     p.filament_diameter, p.extrusion_multiplier)
-    # Frame-Box-Koordinaten als Marker-Kommentar — Parser nutzt sie
-    # bevorzugt, weil das v2-"["-Frame nicht als 4-Linien-Rechteck
-    # erkennbar wäre (nur 2 extrudierende Frame-Moves).
+    # Frame-Box-Marker als Kommentar — Parser nutzt diese, da auch ein
+    # 3-Perimeter-Frame im GCode als viele Linien erscheint.
     out.append(
         f"; PA_ANALYZER_FRAME X0={_fmt(bx0)} Y0={_fmt(by0)} "
         f"X1={_fmt(bx1)} Y1={_fmt(by1)}")
-    # Frame wird in Layer 1 gedruckt → first_layer_print_f für Bett-Haftung
-    out.extend(travel_to(bx0, by1))
-    out.append(f"G1 X{_fmt(bx0)} Y{_fmt(by0)} "
-               f"E{_fmt_e(e_v)} F{first_layer_print_f}")  # links: oben → unten
-    out.append(f"G1 X{_fmt(bx1)} Y{_fmt(by0)} "
-               f"E{_fmt_e(e_h)} F{first_layer_print_f}")  # unten: links → rechts
+    # Frame als 3-Perimeter umlaufender Rahmen (Orca-Stil), ohne Infill.
+    # Höhe = nur bis Top-Bar-Bottom; Top-Bar wird separat als zweite
+    # Box gezeichnet (Task 5). Wird in Layer 0 mit first_layer_print_f
+    # gedruckt für Bett-Haftung.
+    out.extend(_draw_box(
+        p, bx0, by0,
+        width=bx1 - bx0, height=top_bar_y_low - by0,
+        n_perimeters=p.wall_count, is_filled=False,
+        travel_to_fn=travel_to, print_f=first_layer_print_f,
+    ))
 
     # SET_PRESSURE_ADVANCE-Präfix vorbereiten (optional mit EXTRUDER=)
     set_pa_prefix = (

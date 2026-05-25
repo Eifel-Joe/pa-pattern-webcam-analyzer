@@ -908,3 +908,28 @@ def test_draw_box_mit_infill_emittiert_45grad_diagonalen():
             assert abs(dx - dy) < 0.01, (
                 f"Infill-Linie nicht 45°: ΔX={dx:.3f} vs ΔY={dy:.3f}")
         prev_x, prev_y = x, y
+
+
+def test_frame_hat_drei_umlaufende_wandlinien():
+    """Frame um Chevrons soll 3 konzentrische Perimeter haben (Orca-Stil).
+    Aktuelle Implementierung hatte nur '[' (2 Linien links + unten).
+    """
+    import re
+    p = GeneratorParams(num_layers=1)
+    g = generate(p)
+    lines = g.splitlines()
+    # Finde Frame-Block: zwischen PA_ANALYZER_FRAME-Kommentar und der
+    # ersten SET_PRESSURE_ADVANCE
+    frame_start = next(i for i, l in enumerate(lines)
+                       if "; PA_ANALYZER_FRAME" in l)
+    pa_set = next(i for i, l in enumerate(lines)
+                  if i > frame_start and l.startswith("SET_PRESSURE_ADVANCE"))
+    frame_block = lines[frame_start:pa_set]
+    # 3 Perimeter à 4 extrudierte Linien = 12 extrudierte Moves
+    extruded = [l for l in frame_block
+                if l.startswith("G1") and " E" in l]
+    # Wir tolerieren mehr (kann auch Top-Bar enthalten wenn die direkt
+    # nach Frame ohne PA-Setzung kommt). Mindestens 12.
+    assert len(extruded) >= 12, (
+        f"Frame sollte mindestens 12 extrudierte Moves (3 Perimeter × 4) "
+        f"haben, hat {len(extruded)}")
