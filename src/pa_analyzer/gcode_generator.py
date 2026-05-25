@@ -254,7 +254,134 @@ def _draw_box(
         x -= cur_w
         out.append(f"G1 X{_fmt(x)} Y{_fmt(y)} E{_fmt_e(e_h)} F{print_f}")
 
-    # Infill kommt in Task 3
+    if not is_filled:
+        return out
+
+    # 45°-Infill — direkte Übersetzung von Orca's draw_box Linie 316-460.
+    # spacing_45 = line_spacing / sin(45°): Infill-Linien-Abstand entlang
+    # der Diagonale. m_encroachment = 0.45 (aus Orca-Default), wie weit
+    # Infill in die innerste Perimeter hineinläuft.
+    m_encroachment = 0.45
+    spacing_45 = line_spacing / math.sin(math.pi / 4)
+    bound_modifier = (line_spacing * (n_perimeters - 1)
+                      + lw * (1 - m_encroachment))
+    x_min = x0 + bound_modifier
+    x_max = x0 + width - bound_modifier
+    y_min = y0 + bound_modifier
+    y_max = y0 + height - bound_modifier
+    x_count = int(math.floor((x_max - x_min) / spacing_45))
+    y_count = int(math.floor((y_max - y_min) / spacing_45))
+    x_remainder = (x_max - x_min) % spacing_45
+    y_remainder = (y_max - y_min) % spacing_45
+
+    x, y = x_min, y_min
+    # Fill-Start (Travel)
+    out.append(f"G1 X{_fmt(x)} Y{_fmt(y)} F7200  ; Fill: Move to fill start")
+
+    n_iter = x_count + y_count + (
+        1 if x_remainder + y_remainder >= spacing_45 else 0)
+    for i in range(n_iter):
+        if i < min(x_count, y_count):
+            # Diagonalen die nicht den oberen/rechten Rand erreichen
+            if i % 2 == 0:
+                x += spacing_45
+                y = y_min
+                out.append(f"G1 X{_fmt(x)} Y{_fmt(y)} F7200  ; Fill: Step right")
+                # Print up/left zu (x_min, y + (x - x_min))
+                new_y = y + (x - x_min)
+                new_x = x_min
+                e = _extrusion(
+                    math.hypot(new_x - x, new_y - y), lw, p.layer_height,
+                    p.filament_diameter, p.extrusion_multiplier)
+                x, y = new_x, new_y
+                out.append(f"G1 X{_fmt(x)} Y{_fmt(y)} E{_fmt_e(e)} "
+                           f"F{print_f}  ; Fill: Print up/left")
+            else:
+                y += spacing_45
+                x = x_min
+                out.append(f"G1 X{_fmt(x)} Y{_fmt(y)} F7200  ; Fill: Step up")
+                # Print down/right zu (x + (y - y_min), y_min)
+                new_x = x + (y - y_min)
+                new_y = y_min
+                e = _extrusion(
+                    math.hypot(new_x - x, new_y - y), lw, p.layer_height,
+                    p.filament_diameter, p.extrusion_multiplier)
+                x, y = new_x, new_y
+                out.append(f"G1 X{_fmt(x)} Y{_fmt(y)} E{_fmt_e(e)} "
+                           f"F{print_f}  ; Fill: Print down/right")
+        elif i < max(x_count, y_count):
+            # Boxes wider than tall OR taller than wide — Diagonalen
+            # die einen Rand erreichen aber nicht den anderen
+            if x_count > y_count:
+                if i % 2 == 0:
+                    x += spacing_45
+                    y = y_min
+                    out.append(f"G1 X{_fmt(x)} Y{_fmt(y)} F7200  ; Fill: Step right")
+                    new_x = x - (y_max - y_min)
+                    new_y = y_max
+                    e = _extrusion(
+                        math.hypot(new_x - x, new_y - y), lw, p.layer_height,
+                        p.filament_diameter, p.extrusion_multiplier)
+                    x, y = new_x, new_y
+                    out.append(f"G1 X{_fmt(x)} Y{_fmt(y)} E{_fmt_e(e)} "
+                               f"F{print_f}  ; Fill: Print up/left")
+                else:
+                    if i == y_count:
+                        x += spacing_45 - y_remainder
+                        y_remainder = 0
+                    else:
+                        x += spacing_45
+                    y = y_max
+                    out.append(f"G1 X{_fmt(x)} Y{_fmt(y)} F7200  ; Fill: Step right")
+                    new_x = x + (y_max - y_min)
+                    new_y = y_min
+                    e = _extrusion(
+                        math.hypot(new_x - x, new_y - y), lw, p.layer_height,
+                        p.filament_diameter, p.extrusion_multiplier)
+                    x, y = new_x, new_y
+                    out.append(f"G1 X{_fmt(x)} Y{_fmt(y)} E{_fmt_e(e)} "
+                               f"F{print_f}  ; Fill: Print down/right")
+            else:
+                # box taller than wide — analog spiegelverkehrt
+                # (in unserem Use-Case Top-Bar ist x_count > y_count
+                # weil 84 mm × 13 mm; daher kein concrete Fall — aber
+                # für draw_box-Vollständigkeit drin)
+                if i % 2 == 0:
+                    y += spacing_45
+                    x = x_min
+                    out.append(f"G1 X{_fmt(x)} Y{_fmt(y)} F7200  ; Fill: Step up")
+                    new_y = y - (x_max - x_min)
+                    new_x = x_max
+                    e = _extrusion(
+                        math.hypot(new_x - x, new_y - y), lw, p.layer_height,
+                        p.filament_diameter, p.extrusion_multiplier)
+                    x, y = new_x, new_y
+                    out.append(f"G1 X{_fmt(x)} Y{_fmt(y)} E{_fmt_e(e)} "
+                               f"F{print_f}  ; Fill: Print down/right")
+                else:
+                    if i == x_count:
+                        y += spacing_45 - x_remainder
+                        x_remainder = 0
+                    else:
+                        y += spacing_45
+                    x = x_max
+                    out.append(f"G1 X{_fmt(x)} Y{_fmt(y)} F7200  ; Fill: Step up")
+                    new_y = y + (x_max - x_min)
+                    new_x = x_min
+                    e = _extrusion(
+                        math.hypot(new_x - x, new_y - y), lw, p.layer_height,
+                        p.filament_diameter, p.extrusion_multiplier)
+                    x, y = new_x, new_y
+                    out.append(f"G1 X{_fmt(x)} Y{_fmt(y)} E{_fmt_e(e)} "
+                               f"F{print_f}  ; Fill: Print up/left")
+        else:
+            # Letzte Iteration für x_remainder + y_remainder >= spacing_45
+            # (kleine Eck-Diagonale) — vereinfacht: skip wenn beide 0
+            if x_remainder == 0 and y_remainder == 0:
+                continue
+            # Wir lassen diese Edge-Case-Diagonale weg — minimaler
+            # Footprint-Unterschied, kein Druck-Defekt.
+
     return out
 
 

@@ -874,3 +874,37 @@ def test_draw_box_drei_perimeter_nest_inwards():
     assert f"X{expected_x:g} Y{expected_y:g}" in travels[1], (
         f"2. Travel sollte zu ({expected_x}, {expected_y}) gehen, "
         f"ist: {travels[1]}")
+
+
+def test_draw_box_mit_infill_emittiert_45grad_diagonalen():
+    """Bei is_filled=True kommt nach den Perimetern ein 45°-Infill.
+    Jede Infill-Print-Linie hat |ΔX| == |ΔY| (45°).
+    """
+    from pa_analyzer.gcode_generator import _draw_box
+    import re
+    p = GeneratorParams()
+    def travel_to(x, y):
+        return [f"G1 X{x} Y{y} F7200"]
+    lines = _draw_box(p, x0=100.0, y0=200.0, width=30.0, height=20.0,
+                     n_perimeters=3, is_filled=True,
+                     travel_to_fn=travel_to, print_f=6000)
+    # Infill-Linien folgen den Perimetern. Extrudierte Linien NACH den
+    # 12 Perimeter-Moves sind Infill-Print-Linien.
+    extruded = [l for l in lines if l.startswith("G1") and " E" in l]
+    assert len(extruded) > 12, (
+        "is_filled=True sollte zusätzliche extrudierte Linien "
+        "(Infill) emittieren")
+    infill_lines = extruded[12:]
+    # Für jede Infill-Linie: |ΔX| ≈ |ΔY| (45°)
+    prev_x, prev_y = None, None
+    for l in lines:
+        m = re.match(r"G1 X([\d.-]+) Y([\d.-]+)", l)
+        if not m:
+            continue
+        x, y = float(m.group(1)), float(m.group(2))
+        if prev_x is not None and "E" in l and "Fill: Print" in l:
+            dx = abs(x - prev_x)
+            dy = abs(y - prev_y)
+            assert abs(dx - dy) < 0.01, (
+                f"Infill-Linie nicht 45°: ΔX={dx:.3f} vs ΔY={dy:.3f}")
+        prev_x, prev_y = x, y
