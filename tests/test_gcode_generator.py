@@ -360,63 +360,6 @@ def test_generate_emittiert_top_bar_vor_erstem_chevron():
     )
 
 
-def test_generate_setzt_anker_marker_links():
-    # Anker-Marker = gefülltes Rechteck, das linksseitig an Frame-Left (bx0)
-    # andockt und vertikal in der Chevron-Mitte sitzt.
-    #
-    # Geometrie (Default-Params, v2: margin=0, left_padding=2.5):
-    #   x-Bereich : [bx0, bx0 + anchor_marker_width]
-    #   y-Bereich : [chevron_center_y - 4, chevron_center_y + 4]
-    #   n_lines   : round(anchor_marker_width / line_width) = 4
-    #
-    # Test-Strategie: extrudierende G1-Moves im Anker-Rechteck suchen.
-    # Chevron-Bereich überschneidet sich nicht mit diesem Y-Fenster.
-    import re
-    p = GeneratorParams()
-    g = generate(p)
-
-    lw = _line_width(p)
-    dx, dy = _chevron_deltas(p)
-    adv = _group_advance(p)
-    pa_vals = _pa_values(p)
-    pattern_w = (len(pa_vals) - 1) * adv + (p.wall_count - 1) * _wall_x_offset(p) + dx
-    chevron_h = 2 * dy
-    pattern_h = p.top_bar_height + p.chevron_band_gap + chevron_h
-    # v2: margin=0, left_padding=anchor_marker_width + 0.5
-    margin = 0.0
-    left_padding = p.anchor_marker_width + 0.5
-    total_w = pattern_w + left_padding
-    bx0 = p.bed_x / 2 - (total_w + 2 * margin) / 2
-    by0 = p.bed_y / 2 - (pattern_h + 2 * margin) / 2
-    py0 = by0 + margin
-    # Anker sitzt an bx0 (Frame-Left), nicht mehr an bx0+margin
-    x_left = bx0
-    x_right = x_left + p.anchor_marker_width + 0.5   # +0.5 Puffer
-    chevron_center_y = py0 + dy
-    y_low = chevron_center_y - p.anchor_marker_height / 2 - 0.5   # Puffer
-    y_high = chevron_center_y + p.anchor_marker_height / 2 + 0.5
-
-    extruding_hits = []
-    for line in g.splitlines():
-        if " E" not in line or not line.startswith("G1"):
-            continue
-        mx = re.search(r"X([\d.-]+)", line)
-        my = re.search(r"Y([\d.-]+)", line)
-        if not mx or not my:
-            continue
-        x = float(mx.group(1))
-        y = float(my.group(1))
-        if x_left <= x <= x_right and y_low <= y <= y_high:
-            extruding_hits.append((x, y))
-
-    assert len(extruding_hits) >= 4, (
-        f"Anker-Marker fehlt — nur {len(extruding_hits)} extrudierende Moves "
-        f"im Anker-Rechteck X[{x_left:.2f},{x_right:.2f}] "
-        f"Y[{y_low:.2f},{y_high:.2f}] gefunden "
-        f"(erwartet ≥ 4 = anchor_marker_width / line_width)"
-    )
-
-
 def test_generate_emittiert_set_velocity_limit_accel():
     p = GeneratorParams(accel=2000.0)
     g = generate(p)
@@ -1048,9 +991,14 @@ def test_settings_header_liegt_rechts_von_letztem_pa_label():
     wall_off = _wall_x_offset(p)
     adv = _group_advance(p)
     # Aus dem GCode den px0 holen
+    import math as _math
+    from pa_analyzer.gcode_generator import _line_width as _lw_fn
     frame_line = next(l for l in lines if "PA_ANALYZER_FRAME" in l)
     bx0 = float(re.search(r"X0=([\d.-]+)", frame_line).group(1))
-    px0 = bx0 + p.anchor_marker_width + 0.5
+    _lw = _lw_fn(p)
+    _line_spacing = _lw - p.layer_height * (1 - _math.pi / 4)
+    _pattern_shift = (p.wall_count - 1) * _line_spacing + _lw + 0.5
+    px0 = bx0 + _pattern_shift
     rightmost_pa_x = (
         px0 + (num_patterns - 1) * adv
         + (p.wall_count - 1) * wall_off / 2
@@ -1064,3 +1012,14 @@ def test_settings_header_liegt_rechts_von_letztem_pa_label():
         f"{rightmost_label - rightmost_pa_x:.2f} ≤ group_advance "
         f"({adv:.2f}). Settings sind nicht RECHTS der PA-Labels "
         f"(stehen wohl noch links davor).")
+
+
+def test_anker_marker_nicht_mehr_emittiert():
+    """Orca-Stil hat keinen separaten Anker-Marker. Frame-Asymmetrie
+    durch Top-Bar oben reicht für orientation.py."""
+    import inspect
+    from pa_analyzer import gcode_generator
+    src = inspect.getsource(gcode_generator.generate)
+    assert "_anchor_marker_block(" not in src, (
+        "_anchor_marker_block wird noch in generate() aufgerufen — "
+        "Anker-Marker noch da")

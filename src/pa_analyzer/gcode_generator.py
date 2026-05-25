@@ -388,38 +388,8 @@ def _draw_box(
 # _top_bar_block entfernt 2026-05-25 — ersetzt durch _draw_box(is_filled=True) (Task 5)
 
 
-def _anchor_marker_block(
-    p: GeneratorParams, x_left: float, y_center: float,
-    travel_to_fn, print_f: int,
-) -> list[str]:
-    """Gefülltes Rechteck links neben dem Pattern (Asymmetrie-Anker).
-
-    x_left = linke Außenkante des Rechtecks (Frame-Innenkante = bx0+margin).
-    y_center = vertikale Mitte des Rechtecks (Chevron-Reihenmitte = py0+dy).
-
-    Der Marker besteht aus n_lines vertikalen Linien im Abstand line_width,
-    abwechselnd nach oben / nach unten gezeichnet (Boustrophedon). Jede Linie
-    hat die Länge anchor_marker_height.
-    """
-    lw = _line_width(p)
-    y_low = y_center - p.anchor_marker_height / 2
-    y_high = y_center + p.anchor_marker_height / 2
-    e_v = _extrusion(p.anchor_marker_height, lw, p.layer_height,
-                     p.filament_diameter, p.extrusion_multiplier)
-    out: list[str] = []
-    n_lines = max(1, int(round(p.anchor_marker_width / lw)))
-    out.extend(travel_to_fn(x_left, y_low))
-    nach_oben = True
-    for i in range(n_lines):
-        x = x_left + i * lw
-        if nach_oben:
-            out.append(f"G1 X{_fmt(x)} Y{_fmt(y_high)} "
-                       f"E{_fmt_e(e_v)} F{print_f}")
-        else:
-            out.append(f"G1 X{_fmt(x)} Y{_fmt(y_low)} "
-                       f"E{_fmt_e(e_v)} F{print_f}")
-        nach_oben = not nach_oben
-    return out
+# _anchor_marker_block entfernt 2026-05-25 — Orca-Stil verwendet keinen
+# separaten Asymmetrie-Anker; die Top-Bar oben reicht für orientation.py (Task 8)
 
 
 def _pa_labels_block(
@@ -501,16 +471,22 @@ def generate(params: GeneratorParams) -> str:
         (len(pa_values) - 1) * adv + (p.wall_count - 1) * wall_off + dx
     )
     pattern_h = p.top_bar_height + p.chevron_band_gap + chevron_h
-    margin = 0.0  # v2: Frame berührt Pattern direkt (kein Luftspalt)
-    # left_padding: Anker-Marker links innerhalb des Frames + kleiner Gap
-    # zur ersten Chevron-Basis (verhindert Überlappung mit Chevron-Linien)
-    left_padding = p.anchor_marker_width + 0.5
-    total_w = pattern_w + left_padding
+    margin = 0.0  # Frame berührt Pattern direkt (kein Luftspalt)
+    # pattern_shift: X-Versatz vom Frame-Links-Rand bis zum ersten
+    # Chevron-Arm-Start. Macht Platz für die Frame-Perimeter-Wandstärke
+    # (wall_count-1) * line_spacing) PLUS Nozzle-Linienbreite PLUS
+    # horizontales Padding (~0.5 mm) für saubere Label-Ausrichtung.
+    # Reproduziert Orca's pattern_shift() (orca_calib.cpp Linie 893).
+    line_spacing = lw - p.layer_height * (1 - math.pi / 4)
+    glyph_padding_horizontal = 0.5
+    pattern_shift = ((p.wall_count - 1) * line_spacing
+                     + lw + glyph_padding_horizontal)
+    total_w = pattern_w + pattern_shift
     bx0 = p.bed_x / 2 - (total_w + 2 * margin) / 2
     by0 = p.bed_y / 2 - (pattern_h + 2 * margin) / 2
     bx1 = bx0 + total_w + 2 * margin
     by1 = by0 + pattern_h + 2 * margin
-    px0 = bx0 + margin + left_padding      # Chevron-Start nach Anker-Bereich
+    px0 = bx0 + margin + pattern_shift      # Chevron-Start nach Frame-Wand-Padding
     py0 = by0 + margin                     # Chevron-Bottom
     # Top-Bar-Y-Bereich (y_high wird nicht mehr separat berechnet —
     # tb_height wird in der Layer-Schleife aus top_bar_height - line_spacing ermittelt):
@@ -623,14 +599,6 @@ def generate(params: GeneratorParams) -> str:
                 n_perimeters=p.wall_count, is_filled=True,
                 travel_to_fn=travel_to, print_f=layer_print_f,
             ))
-        # Anker-Marker links angedockt an Frame-Left (bx0).
-        # v2: margin=0, Anker sitzt direkt an der Frame-Linie.
-        # y_center = Chevron-Mitte (zwischen py0 und py0 + 2*dy).
-        chevron_center_y = py0 + dy
-        out.extend(_anchor_marker_block(
-            p, bx0, chevron_center_y,
-            travel_to, layer_print_f,
-        ))
         for j, pa in enumerate(pa_values):
             out.append(f"M117 PA {_fmt(pa)}")
             out.append(f"{set_pa_prefix}{_fmt(pa)}")
