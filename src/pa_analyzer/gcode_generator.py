@@ -100,6 +100,13 @@ class GeneratorParams:
     start_gcode: str = "PRINT_START EXTRUDER={temp} BED={bed_temp}"
     end_gcode: str = "PRINT_END"
     analyze_gcode: str = "RUN_SHELL_COMMAND CMD=pa_analyze"
+    # Wartezeit (Sekunden) zwischen PRINT_END und dem Analyze-Trigger.
+    # Befund Live-Test 5 (2026-05-25): direkter Trigger lief, während
+    # frisches Filament noch warm/glänzend war — Webcam-Reflexionen
+    # verschoben den Apex-Score um ~7 %-Punkte (Konfidenz 3 → 10 %
+    # nach 8 min warten). Default 30 s: Kompromiss zwischen Cool-Down
+    # und Praktikabilität. 0 = kein Delay (alte Verhalten).
+    analyze_delay_seconds: int = 30
 
 
 def _line_width(p: GeneratorParams) -> float:
@@ -159,6 +166,22 @@ def _group_advance(p: GeneratorParams) -> float:
         + p.pattern_spacing
         + _line_width(p)
     )
+
+
+def _flow_rate(p: GeneratorParams) -> float:
+    """Volumetrische Flowrate in mm³/s — was OrcaSlicer als Flow-Wert
+    auf dem PA-Pattern aufdruckt.
+
+    Formel: line_width × layer_height × speed_print × extrusion_multiplier
+    Aussagekraft: die effektive Förderrate durch das Hotend bei den
+    Test-Druck-Parametern. Limitierender Faktor bei Hochgeschwindigkeits-
+    Druck (Hotend-Schmelzleistung). Reproduzierbarkeit > Prozent-Multiplier.
+
+    NOT-TO-DO: extrusion_multiplier × 100 (= Prozent) verwenden — das ist
+    nur der Slicer-interne Multiplikator, kein direkter Druck-Parameter.
+    """
+    return (_line_width(p) * p.layer_height
+            * p.speed_print * p.extrusion_multiplier)
 
 
 def _fmt(v: float) -> str:
@@ -653,7 +676,10 @@ def generate(params: GeneratorParams) -> str:
             settings_spacing_local = p.label_glyph_height + 1.5
             flow_x = px0 + num_patterns * adv + settings_gap_local
             accel_x = flow_x + settings_spacing_local
-            flow_value = p.extrusion_multiplier * 100  # als Prozent
+            # Flow-Label = volumetrische Flowrate in mm³/s (Orca-Konvention,
+            # siehe _flow_rate-Docstring). Auf 1 Nachkommastelle gerundet
+            # für lesbare Labels (z.B. "15.5" statt "15.4872").
+            flow_value = round(_flow_rate(p), 1)
             out.extend(render_label_gcode(
                 text=_fmt(flow_value),
                 x=flow_x, y=label_y_top,
@@ -697,5 +723,12 @@ def generate(params: GeneratorParams) -> str:
     # Letzte Zeile der gedruckten Datei: stößt nach Druckende die
     # Auswertung an (Spec §4 Phase 3). Leeres analyze_gcode -> kein Trailer.
     if p.analyze_gcode:
+        # Vor dem Analyze-Trigger: warten bis alle Bewegungen abgeschlossen
+        # (M400) und dann analyze_delay_seconds dwell — Filament cool-down
+        # für saubere Webcam-Aufnahme (Live-Test 5 Befund: ohne Delay
+        # liefen Score-Outlier bei noch warmen Filament-Stellen).
+        if p.analyze_delay_seconds > 0:
+            out.append("M400")
+            out.append(f"G4 P{p.analyze_delay_seconds * 1000}")
         out.append(p.analyze_gcode)
     return "\n".join(out) + "\n"
