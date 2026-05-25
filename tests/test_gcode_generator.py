@@ -911,25 +911,46 @@ def test_draw_box_mit_infill_emittiert_45grad_diagonalen():
 
 
 def test_frame_hat_drei_umlaufende_wandlinien():
-    """Frame um Chevrons soll 3 konzentrische Perimeter haben (Orca-Stil).
-    Aktuelle Implementierung hatte nur '[' (2 Linien links + unten).
+    """Frame um Chevrons soll 3 konzentrische, GESCHLOSSENE Perimeter
+    haben (Orca-Stil). Alte Implementierung war "[" — 2 offene Linien
+    (links + unten) ohne Rückkehr zum Start.
+
+    Test prüft präzise: die ERSTEN 4 extrudierten G1-Moves nach
+    PA_ANALYZER_FRAME bilden einen geschlossenen Ring (End-Punkt der
+    4. Linie == Start-Punkt vor der 1. Linie), und es gibt mindestens
+    12 extrudierte Moves zwischen Frame-Marker und erster PA-Setzung
+    (3 Perimeter × 4 Seiten + Top-Bar + Anker).
     """
     import re
     p = GeneratorParams(num_layers=1)
     g = generate(p)
     lines = g.splitlines()
-    # Finde Frame-Block: zwischen PA_ANALYZER_FRAME-Kommentar und der
-    # ersten SET_PRESSURE_ADVANCE
     frame_start = next(i for i, l in enumerate(lines)
                        if "; PA_ANALYZER_FRAME" in l)
     pa_set = next(i for i, l in enumerate(lines)
                   if i > frame_start and l.startswith("SET_PRESSURE_ADVANCE"))
     frame_block = lines[frame_start:pa_set]
-    # 3 Perimeter à 4 extrudierte Linien = 12 extrudierte Moves
-    extruded = [l for l in frame_block
-                if l.startswith("G1") and " E" in l]
-    # Wir tolerieren mehr (kann auch Top-Bar enthalten wenn die direkt
-    # nach Frame ohne PA-Setzung kommt). Mindestens 12.
-    assert len(extruded) >= 12, (
-        f"Frame sollte mindestens 12 extrudierte Moves (3 Perimeter × 4) "
-        f"haben, hat {len(extruded)}")
+    m_mark = re.search(r"X0=([\d.-]+).*Y0=([\d.-]+)", frame_block[0])
+    bx0, by0 = float(m_mark.group(1)), float(m_mark.group(2))
+    # Filter: nur ECHTE Print-Moves (G1 mit X UND E) — schließt reine
+    # Retract/Unretract-Moves ("G1 E-0.5") aus.
+    print_moves = [l for l in frame_block
+                   if l.startswith("G1") and " X" in l and " E" in l]
+    # 3 Perimeter × 4 Seiten = 12. Top-Bar+Anker erhöhen das, daher >=12.
+    assert len(print_moves) >= 12, (
+        f"Frame sollte mindestens 12 Print-Moves (3 Perimeter × 4) "
+        f"haben, hat {len(print_moves)}")
+    # Erste 4 Print-Moves = innerster Perimeter (up → right → down → left).
+    # Die 4. Linie ("left") muss zurück zu (bx0, by0) führen — sonst
+    # ist der Ring nicht geschlossen (genau das Bug-Muster vom "[").
+    coords = []
+    for l in print_moves[:4]:
+        mx = re.search(r"X([\d.-]+)", l)
+        my = re.search(r"Y([\d.-]+)", l)
+        coords.append((float(mx.group(1)) if mx else None,
+                       float(my.group(1)) if my else None))
+    end_x, end_y = coords[3]
+    assert abs(end_x - bx0) < 0.01 and abs(end_y - by0) < 0.01, (
+        f"Frame-Ring nicht geschlossen — 4. Print-Move endet bei "
+        f"({end_x}, {end_y}), erwartet Start ({bx0}, {by0}). Das alte "
+        f'"["-Frame hatte genau dieses Problem (kein Rechts/Oben).')
