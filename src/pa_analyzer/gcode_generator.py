@@ -201,6 +201,63 @@ def _format_start(p: GeneratorParams) -> str:
             .replace("{bed_temp}", _fmt(p.bed_temp)))
 
 
+def _draw_box(
+    p: GeneratorParams,
+    x0: float, y0: float, width: float, height: float,
+    n_perimeters: int,
+    is_filled: bool,
+    travel_to_fn,
+    print_f: int,
+) -> list[str]:
+    """Zeichnet eine Box mit n_perimeters umlaufenden Wandlinien
+    (optional + 45°-Infill innen). Reproduziert Orca's draw_box-
+    Funktion (siehe reference/orca_calib.cpp Linie 261).
+
+    Perimeter-Reihenfolge pro Wand: up → right → down → left.
+    Zwischen Perimetern: Travel-Move "step inwards" um line_spacing.
+
+    NOT-TO-DO: Statt Step-inwards die nächste Perimeter zu starten
+    mit Off-by-one in Y. Orca's Logik ist klar — wir halten uns
+    streng daran (line_spacing in BEIDE Achsen je Perimeter).
+    """
+    lw = _line_width(p)
+    # line_spacing = lw - h*(1 - π/4) — übernommen aus Orca (Linie 270)
+    line_spacing = lw - p.layer_height * (1 - math.pi / 4)
+
+    out: list[str] = []
+    out.extend(travel_to_fn(x0, y0))
+
+    x, y = x0, y0
+    for i in range(n_perimeters):
+        if i > 0:
+            x += line_spacing
+            y += line_spacing
+            # Step-inwards als Travel (kein E)
+            out.append(f"G1 X{_fmt(x)} Y{_fmt(y)} F7200")
+        # Aktuelle Box-Größe für diesen Perimeter
+        cur_w = width - 2 * i * line_spacing
+        cur_h = height - 2 * i * line_spacing
+        e_v = _extrusion(cur_h, lw, p.layer_height,
+                         p.filament_diameter, p.extrusion_multiplier)
+        e_h = _extrusion(cur_w, lw, p.layer_height,
+                         p.filament_diameter, p.extrusion_multiplier)
+        # up: Y +cur_h
+        y += cur_h
+        out.append(f"G1 X{_fmt(x)} Y{_fmt(y)} E{_fmt_e(e_v)} F{print_f}")
+        # right: X +cur_w
+        x += cur_w
+        out.append(f"G1 X{_fmt(x)} Y{_fmt(y)} E{_fmt_e(e_h)} F{print_f}")
+        # down: Y -cur_h
+        y -= cur_h
+        out.append(f"G1 X{_fmt(x)} Y{_fmt(y)} E{_fmt_e(e_v)} F{print_f}")
+        # left: X -cur_w
+        x -= cur_w
+        out.append(f"G1 X{_fmt(x)} Y{_fmt(y)} E{_fmt_e(e_h)} F{print_f}")
+
+    # Infill kommt in Task 3
+    return out
+
+
 def _top_bar_block(
     p: GeneratorParams, x0: float, x1: float,
     y_low: float, y_high: float,

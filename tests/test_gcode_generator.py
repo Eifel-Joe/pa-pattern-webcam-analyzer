@@ -825,3 +825,52 @@ def test_generate_label_stride_eins_emittiert_alle_labels():
     # Hier nur prüfen: kein Crash und plausible Ausgabe.
     assert "G1" in g
     assert "SET_PRESSURE_ADVANCE" in g
+
+
+def test_draw_box_ein_perimeter_zeichnet_rechteck():
+    """Ein Perimeter = 4 extrudierte Linien (up, right, down, left)
+    plus ein Travel-Move zum Box-Start."""
+    from pa_analyzer.gcode_generator import _draw_box
+    p = GeneratorParams()
+    def travel_to(x, y):
+        return [f"G1 X{x} Y{y} F7200"]
+    lines = _draw_box(p, x0=100.0, y0=200.0, width=30.0, height=20.0,
+                     n_perimeters=1, is_filled=False,
+                     travel_to_fn=travel_to, print_f=6000)
+    # 1 Travel zum Start + 4 extrudierte Linien
+    g1 = [l for l in lines if l.startswith("G1")]
+    extruded = [l for l in g1 if " E" in l]
+    assert len(extruded) == 4, (
+        f"1 Perimeter sollte 4 extrudierte Moves haben, hat {len(extruded)}")
+    # Reihenfolge: up (Y wechselt), right (X wechselt), down, left
+    # Check: erste extrudierte Linie geht in +Y (up)
+    assert "Y220" in extruded[0], "Erste Linie sollte 'up' (Y +20) sein"
+    assert "X130" in extruded[1], "Zweite Linie sollte 'right' (X +30) sein"
+
+
+def test_draw_box_drei_perimeter_nest_inwards():
+    """3 Perimeter = 12 extrudierte Linien + 2 Step-Inwards-Travels."""
+    from pa_analyzer.gcode_generator import _draw_box, _line_width
+    import math
+    p = GeneratorParams()
+    def travel_to(x, y):
+        return [f"G1 X{x} Y{y} F7200"]
+    lines = _draw_box(p, x0=100.0, y0=200.0, width=30.0, height=20.0,
+                     n_perimeters=3, is_filled=False,
+                     travel_to_fn=travel_to, print_f=6000)
+    extruded = [l for l in lines if l.startswith("G1") and " E" in l]
+    assert len(extruded) == 12, (
+        f"3 Perimeter sollten 12 Moves haben, sind {len(extruded)}")
+    travels = [l for l in lines if l.startswith("G1") and " E" not in l]
+    # 1 Travel zum Start + 2 Step-Inwards-Travels (zwischen
+    # Perimetern 1→2 und 2→3) = 3 Travels.
+    assert len(travels) == 3, (
+        f"Erwartet 3 Travels (Start + 2 Step-Inwards), sind {len(travels)}")
+    # Step-Inwards: Perimeter 2 startet bei (x0 + line_spacing, y0 + line_spacing)
+    lw = _line_width(p)
+    spacing = lw - p.layer_height * (1 - math.pi / 4)
+    expected_x = round(100.0 + spacing, 4)
+    expected_y = round(200.0 + spacing, 4)
+    assert f"X{expected_x:g} Y{expected_y:g}" in travels[1], (
+        f"2. Travel sollte zu ({expected_x}, {expected_y}) gehen, "
+        f"ist: {travels[1]}")
