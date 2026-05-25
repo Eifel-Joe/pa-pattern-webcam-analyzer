@@ -65,14 +65,14 @@ def test_group_advance_positiv():
 
 
 def test_group_advance_konkreter_wert():
-    # Handgerechnet fuer die v3-Default-Parameter (wall_count=3, lw=0.45,
-    # layer_height=0.2, corner_angle=90, pattern_spacing=6.0):
+    # Handgerechnet fuer die v4-Default-Parameter (wall_count=3, lw=0.45,
+    # layer_height=0.2, corner_angle=90, pattern_spacing=18.0):
     # line_spacing = 0.45 - 0.2*(1-pi/4) ~= 0.40708
     # wall_x_offset = line_spacing / sin(45 Grad) ~= 0.57577
-    # group_advance = 2*0.57577 + 6.0 + 0.45 ~= 7.6015
-    # (v2 hatte pattern_spacing=2 → 3.6015; v3 erweitert auf 6 damit
-    # Chevrons mit wall_side_length=8 nicht überlappen.)
-    assert _group_advance(GeneratorParams()) == pytest.approx(7.6014, abs=0.001)
+    # group_advance = 2*0.57577 + 18.0 + 0.45 ~= 19.6014
+    # (v3 hatte pattern_spacing=6 → 7.6014; v4 erweitert auf 18 damit
+    # Chevrons mit wall_side_length=30 klar getrennt sind — Orca-Stil.)
+    assert _group_advance(GeneratorParams()) == pytest.approx(19.6014, abs=0.001)
     # Explizit auch mit alter v2-Geometrie testen (Backward-Compat
     # für Nutzer die alte Parameter überschreiben).
     p_v2 = GeneratorParams(wall_side_length=30.0, pattern_spacing=2.0)
@@ -450,24 +450,25 @@ def test_generate_accel_emittiert_vor_pattern():
 
 def test_generate_beschriftet_jeden_chevron_mit_pa_wert():
     # In der obersten Layer müssen Bewegungen für jeden PA-Wert
-    # ("0", ".", "0", "2", "0" für PA=0.020) auftauchen. Wir prüfen
-    # auf "0.020"-Glyphen-Sequenz indirekt: für 17 PA-Werte und je
-    # 5 Glyphen = mindestens 17*5 = 85 Stroke-Travel-Moves zusätzlich
-    # (in der obersten Layer).
+    # ("0", ".", "0", "2", "0" für PA=0.020) auftauchen. Pro PA-Wert
+    # mindestens ~5 Glyphen-Strokes; Label-Stride filtert evtl. einige.
     p = GeneratorParams(num_layers=2)  # 2 Layer: 1 ohne Labels, 1 mit
     g = generate(p)
-    # Wir suchen nach Moves nach dem Z-Wechsel auf z=0.4 (2. Layer).
     lines = g.splitlines()
     z_top_idx = next(i for i, l in enumerate(lines)
                      if l.startswith("G1 Z0.4 "))
     moves_in_top_layer = lines[z_top_idx:]
-    # Grobe Heuristik: zähle G1-Moves im 2. Layer
     g1_count = sum(1 for l in moves_in_top_layer if l.startswith("G1"))
-    # 2. Layer ohne Labels: ~Top-Bar (~9) + Anker (~4) + 17 Chevrons
-    # à 3 Wände à 2 Arme à 1 Move = 9 + 4 + 102 + Travels ≈ 200.
-    # Mit Labels (~85 Stroke-Moves + 85 Travels = 170): sollte deutlich mehr.
-    assert g1_count > 300, (
-        f"2. Layer hat nur {g1_count} G1-Moves — Labels fehlen")
+    # Aus Params berechnen statt fester Schwelle: typische
+    # G1-pro-Chevron-ohne-Labels ~6 (3 Wände × 2 Arme), plus Top-Bar
+    # und Travel-Overhead. Mit Labels mindestens 50 % mehr als ohne.
+    import math
+    n_groups = int(math.floor((p.pa_end - p.pa_start) / p.pa_step + 0.5)) + 1
+    base_min = n_groups * 6 + 20  # ohne Labels
+    with_labels_min = int(base_min * 1.5)
+    assert g1_count > with_labels_min, (
+        f"2. Layer hat nur {g1_count} G1-Moves bei {n_groups} Gruppen "
+        f"(erwartet > {with_labels_min}) — Labels fehlen vermutlich")
 
 
 def test_generate_labels_nur_in_oberster_layer():

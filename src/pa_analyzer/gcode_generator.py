@@ -26,21 +26,23 @@ class GeneratorParams:
 
     # Pattern
     pa_start: float = 0.0
-    pa_end: float = 0.08
+    pa_end: float = 0.04
     pa_step: float = 0.005
     wall_count: int = 3
-    # v3 (2026-05-24): wall_side_length 30→8, pattern_spacing 2→6.
-    # Bei v2 (wall_side_length=30) überlappten die Chevron-Arme massiv
-    # (Arme reichen 21 mm in X+Y, Apex-Abstand zwischen Gruppen nur 3.6 mm).
-    # Resultat: das gedruckte Pattern erschien im Webcam-Bild als EIN
-    # dichter >-Block ohne unterscheidbare Apexe — fill_in/fill_out-
-    # Score-Formel scheiterte (Outer-Box landete immer auf Material
-    # eines Nachbar-Chevrons). v3 mit wall_side_length=8 + pattern_spacing=6
-    # macht jeden Chevron als kompakte einzelne <-Form sichtbar
-    # (Apex-Abstand ~8 mm > 2×arm_x ~11.3 mm — keine starke Überlappung).
-    wall_side_length: float = 8.0
+    # v4 (2026-05-25): wall_side_length 8→30, pattern_spacing 6→18, pa_step
+    # → 0.005 in 0..0.04-Range (9 Werte). v3 (wall_side=8) konnte den
+    # Drucker bei realer Druckgeschwindigkeit (180 mm/s + 3000 mm/s²)
+    # nicht auf volle Geschwindigkeit beschleunigen — Beschleunigungs-
+    # Distanz 180²/3000=10.8mm > halbe Arm-Länge 4mm → PA-Effekt nicht
+    # messbar. v4 hat wieder lange Arme (30 mm wie v2) damit der Drucker
+    # die volle Druckgeschwindigkeit erreicht, aber weiteren Apex-Abstand
+    # (~20 mm group_advance) und kleinere PA-Range (0..0.04, typischer
+    # Direct-Drive-Bereich). pa_end via CLI/Macro überschreibbar.
+    # Pattern-Größe ~182×54 mm, passt auf Bett >= 200 mm. Orca-Stil
+    # PA-Pattern mit klar getrennten Chevrons.
+    wall_side_length: float = 30.0
     corner_angle: float = 90.0
-    pattern_spacing: float = 6.0
+    pattern_spacing: float = 18.0
     num_layers: int = 4
     # Drucker / Material
     bed_x: float = 300.0
