@@ -70,39 +70,26 @@ def locate_quad(mask: np.ndarray) -> np.ndarray:
     opened = cv2.morphologyEx(
         mask, cv2.MORPH_OPEN,
         cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)))
-    # Fragmentierungs-adaptives Closing: Wenn die größte Component vor
-    # Closing bereits den Großteil aller weißen Pixel ausmacht
-    # (Handy-Foto: ~93 %, Pattern dicht und zusammenhängend), ist
-    # aggressives Closing schädlich — es zieht angrenzende Hintergrund-
-    # Strukturen ans Pattern und verzerrt das Aspect-Ratio. Wenn das
-    # Pattern dagegen stark fragmentiert ist (Webcam-Snapshot: ~55 %,
-    # Chevrons zerfallen in viele kleine Components unterhalb von
-    # MIN_AREA), brauchen wir aggressives Closing, sonst geht beim
-    # connectedComponents alles außer dem Top-Bar verloren.
-    n_pre, _, stats_pre, _ = cv2.connectedComponentsWithStats(opened)
-    if n_pre > 1:
-        big_pre = max(int(stats_pre[i, cv2.CC_STAT_AREA])
-                      for i in range(1, n_pre))
-        total_pre = int((opened > 0).sum())
-        density = big_pre / total_pre if total_pre else 0.0
-    else:
-        density = 0.0
-    if density >= 0.75:
-        # Pattern schon weitgehend zusammenhängend — sanftes Closing
-        # (3x3) reicht, um Pixel-Lücken innerhalb des Patterns zu
-        # glätten ohne benachbarte Strukturen einzubinden.
-        ks = 3
-    else:
-        # Pattern fragmentiert — kräftiges Closing nötig. ks skaliert
-        # mit Bildbreite (Spike: Breite/120), nach oben bei 15 px
-        # begrenzt; `| 1` erzwingt ungerade Größe.
-        # NOT-TO-DO: ks > 15 — bei großen Bildern (HEIC) würde das
-        # Pattern mit Hintergrund verschmelzen; und für die Webcam-
-        # Größe (1280) ergibt //120 ohnehin nur 10.
-        ks = max(7, min(15, mask.shape[1] // 120)) | 1
+    # VERTIKALES Closing-Strukturelement (3 × 21 RECT) statt ELLIPSE.
+    # Hintergrund Live-Test 5 (v3-Pattern): in der filament_mask zerfällt
+    # das Pattern in Top-Bar (kompakte Komponente) + viele kleine
+    # Chevron-Spitzen-Components (50-100 px je, alle unter MIN_AREA).
+    # Ein symmetrisches ELLIPSE(11) Closing schließt die ~3-5 px vertikale
+    # Lücke zwischen Top-Bar-Unterkante und Chevron-Spitzen nicht
+    # zuverlässig. Ein vertikales RECT(3, 21) schließt die Lücke
+    # sicher (vertikale Reichweite 10 px in jede Richtung), expandiert
+    # aber horizontal kaum (1 px) — verbindet Top-Bar+Chevrons OHNE
+    # benachbarte Hintergrund-Strukturen (HEIC) einzuziehen.
+    # NOT-TO-DO: ELLIPSE oder größeres symmetrisches Strukturelement —
+    # bei großen Bildern (HEIC, 4032 px breit) zieht das Pattern mit
+    # benachbartem Material zusammen und ruiniert das Aspect-Ratio.
+    # NOT-TO-DO: density-adaptives ks (frühere Iteration): bei dense
+    # Pattern wurde sanftes ks=3 gewählt, was die Chevron-Spitzen-Lücken
+    # nicht schloss — Pipeline misst dann Müll, weil der Quad nur den
+    # Top-Bar erfasst.
     closed = cv2.morphologyEx(
         opened, cv2.MORPH_CLOSE,
-        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (ks, ks)))
+        cv2.getStructuringElement(cv2.MORPH_RECT, (3, 21)))
     n, lbl, stats, _ = cv2.connectedComponentsWithStats(closed)
     # Mindest-Fläche für "ernsthafte" Komponente: 0.1 % der Bildfläche,
     # mindestens 200 px. Schützt davor, bei extrem dunklen Bildern
