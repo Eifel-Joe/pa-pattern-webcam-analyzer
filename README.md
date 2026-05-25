@@ -139,8 +139,10 @@ in der `printer.cfg`. Nach einem Klipper-Restart ist `PA_CALIBRATE` als
 Befehl verfügbar.
 
 Danach in der Klipper-Konsole — `TEMP` (Hotend), `BED_TEMP` (Bett),
-`FLOW` (Extrusionsfaktor) und `FAN` (Lüfter ab Layer 2, 0..1) an das
-gedruckte Filament anpassen (werden in den GCode eingebacken):
+`FLOW` (Extrusionsfaktor, z.B. 0.956 für 95.6 %; auf das Pattern
+wird die daraus resultierende volumetrische **Flowrate in mm³/s**
+gedruckt, Orca-Konvention) und `FAN` (Lüfter ab Layer 2, 0..1) an
+das gedruckte Filament anpassen (werden in den GCode eingebacken):
 
 ```
 # PLA-typisch:

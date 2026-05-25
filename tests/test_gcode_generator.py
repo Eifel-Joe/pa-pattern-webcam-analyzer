@@ -463,8 +463,10 @@ def test_generate_labels_nur_in_oberster_layer():
     moves_layer2 = _g1_count(z_layer2, z_end)       # OHNE Labels (v4)
 
     # A) Label-Layer (Layer 1) hat deutlich mehr Moves als label-freie
-    #    Layer 2 (gleicher Chevron+Anker-Aufbau, plus Labels)
-    assert moves_layer1 > moves_layer2 + 100, (
+    #    Layer 2 (gleicher Chevron+Anker-Aufbau, plus PA-Labels + Flow + Accel).
+    #    Threshold 80: konservativ wegen variierender Glyph-Komplexität
+    #    der Flow/Accel-Werte (z.B. "9" → 12 G1, "15.5" → 25 G1).
+    assert moves_layer1 > moves_layer2 + 80, (
         f"Label-Layer 1 ({moves_layer1} G1) nicht deutlich größer als "
         f"label-freie Layer 2 ({moves_layer2} G1) — Labels fehlen.")
 
@@ -1062,3 +1064,43 @@ def test_settings_labels_innerhalb_frame_x():
     assert not out_of_frame, (
         f"Settings-Labels außerhalb Frame [{bx0:.1f}, {bx1:.1f}]: "
         f"{out_of_frame}. Frame zu schmal oder Settings-Position falsch.")
+
+
+def test_flow_rate_ist_volumetrische_foerderrate_in_mm3_pro_s():
+    """Orca-Konvention: Flow-Label auf dem PA-Pattern zeigt die
+    volumetrische Förderrate in mm³/s, nicht den
+    Extrusionsfaktor in Prozent.
+
+    Formel: line_width × layer_height × speed × extrusion_multiplier.
+    Für Live-Test-Params (lw=0.45, h=0.2, speed=180, ext_mult=0.956):
+    0.45 × 0.2 × 180 × 0.956 = 15.4872 mm³/s.
+    """
+    from pa_analyzer.gcode_generator import _flow_rate
+    p = GeneratorParams(
+        nozzle_diameter=0.4, line_ratio=112.5,  # → lw=0.45
+        layer_height=0.2, speed_print=180.0,
+        extrusion_multiplier=0.956,
+    )
+    erwartet = 0.45 * 0.2 * 180.0 * 0.956
+    assert _flow_rate(p) == pytest.approx(erwartet, abs=1e-6)
+    # Default-Params (speed=100, ext_mult=1.0): 0.45 × 0.2 × 100 × 1.0 = 9.0
+    assert _flow_rate(GeneratorParams()) == pytest.approx(9.0, abs=0.01)
+
+
+def test_flow_rate_nicht_extrusion_multiplier_prozent():
+    """Regressions-Test: alte Formel war extrusion_multiplier × 100
+    (= "95.6 %" bei flow=0.956) — das war Orca-fremd und nicht
+    aussagekräftig für die Reproduzierbarkeit. Neue Formel gibt
+    bei flow=0.956 + speed=180 ca. 15 mm³/s.
+    """
+    from pa_analyzer.gcode_generator import _flow_rate
+    p = GeneratorParams(extrusion_multiplier=0.956, speed_print=180.0)
+    # Alte Formel hätte 95.6 ergeben
+    alte_falsche_formel = p.extrusion_multiplier * 100
+    assert _flow_rate(p) != pytest.approx(alte_falsche_formel, abs=1.0), (
+        f"_flow_rate liefert {_flow_rate(p)} — das sieht nach "
+        f"extrusion_multiplier × 100 aus (alte falsche Formel)")
+    # Neue Formel: ca. 15 mm³/s
+    assert 10 < _flow_rate(p) < 25, (
+        f"_flow_rate = {_flow_rate(p)} mm³/s liegt außerhalb der "
+        f"plausiblen Range 10-25 für Default-Geometrie + speed=180")

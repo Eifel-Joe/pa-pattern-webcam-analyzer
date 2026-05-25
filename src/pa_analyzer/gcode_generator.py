@@ -161,6 +161,22 @@ def _group_advance(p: GeneratorParams) -> float:
     )
 
 
+def _flow_rate(p: GeneratorParams) -> float:
+    """Volumetrische Flowrate in mm³/s — was OrcaSlicer als Flow-Wert
+    auf dem PA-Pattern aufdruckt.
+
+    Formel: line_width × layer_height × speed_print × extrusion_multiplier
+    Aussagekraft: die effektive Förderrate durch das Hotend bei den
+    Test-Druck-Parametern. Limitierender Faktor bei Hochgeschwindigkeits-
+    Druck (Hotend-Schmelzleistung). Reproduzierbarkeit > Prozent-Multiplier.
+
+    NOT-TO-DO: extrusion_multiplier × 100 (= Prozent) verwenden — das ist
+    nur der Slicer-interne Multiplikator, kein direkter Druck-Parameter.
+    """
+    return (_line_width(p) * p.layer_height
+            * p.speed_print * p.extrusion_multiplier)
+
+
 def _fmt(v: float) -> str:
     """Koordinate/PA-Wert mit bis zu 4 Nachkommastellen, ohne überflüssige
     Nullen. Für den Wertebereich dieses Generators (Koordinaten 1–300,
@@ -653,7 +669,10 @@ def generate(params: GeneratorParams) -> str:
             settings_spacing_local = p.label_glyph_height + 1.5
             flow_x = px0 + num_patterns * adv + settings_gap_local
             accel_x = flow_x + settings_spacing_local
-            flow_value = p.extrusion_multiplier * 100  # als Prozent
+            # Flow-Label = volumetrische Flowrate in mm³/s (Orca-Konvention,
+            # siehe _flow_rate-Docstring). Auf 1 Nachkommastelle gerundet
+            # für lesbare Labels (z.B. "15.5" statt "15.4872").
+            flow_value = round(_flow_rate(p), 1)
             out.extend(render_label_gcode(
                 text=_fmt(flow_value),
                 x=flow_x, y=label_y_top,
