@@ -201,79 +201,195 @@ def _format_start(p: GeneratorParams) -> str:
             .replace("{bed_temp}", _fmt(p.bed_temp)))
 
 
-def _top_bar_block(
-    p: GeneratorParams, x0: float, x1: float,
-    y_low: float, y_high: float,
-    travel_to_fn, print_f: int,
+def _draw_box(
+    p: GeneratorParams,
+    x0: float, y0: float, width: float, height: float,
+    n_perimeters: int,
+    is_filled: bool,
+    travel_to_fn,
+    print_f: int,
 ) -> list[str]:
-    """Vollfüllung der Top-Bar als Linien-Stadion (Boustrophedon).
+    """Zeichnet eine Box mit n_perimeters umlaufenden Wandlinien
+    (optional + 45°-Infill innen). Reproduziert Orca's draw_box-
+    Funktion (siehe reference/orca_calib.cpp Linie 261).
 
-    Zieht horizontale Linien bei Y=y_low + i*lw, abwechselnd nach
-    rechts/links, mit kurzen vertikalen Verbindungs-Linien dazwischen
-    (echtes Stadion-Pattern). Die alte Version ohne Verbindungs-Moves
-    erzeugte stark diagonale Linien (~45° wenn x_span gross), weil die
-    Position nach jeder horizontalen Linie an der gegenüberliegenden
-    X-Kante war und die nächste "horizontale" Linie eine DIAGONALE
-    Quer-Bewegung wurde (Befund Live-Test 5 / 2026-05-25).
+    Perimeter-Reihenfolge pro Wand: up → right → down → left.
+    Zwischen Perimetern: Travel-Move "step inwards" um line_spacing.
+
+    NOT-TO-DO: Statt Step-inwards die nächste Perimeter zu starten
+    mit Off-by-one in Y. Orca's Logik ist klar — wir halten uns
+    streng daran (line_spacing in BEIDE Achsen je Perimeter).
     """
     lw = _line_width(p)
-    e_h = _extrusion(x1 - x0, lw, p.layer_height,
-                     p.filament_diameter, p.extrusion_multiplier)
-    e_v = _extrusion(lw, lw, p.layer_height,
-                     p.filament_diameter, p.extrusion_multiplier)
+    # line_spacing = lw - h*(1 - π/4) — übernommen aus Orca (Linie 270)
+    line_spacing = lw - p.layer_height * (1 - math.pi / 4)
+
     out: list[str] = []
-    n_lines = max(1, int(round((y_high - y_low) / lw)))
-    # Travel zum Start
-    out.extend(travel_to_fn(x0, y_low))
-    rechts = True
-    for i in range(n_lines):
-        y = y_low + i * lw
-        # Horizontale Linie auf y (nur X ändert sich, Y bleibt vom
-        # letzten Wende-Move auf y).
-        x_target = x1 if rechts else x0
-        out.append(f"G1 X{_fmt(x_target)} Y{_fmt(y)} "
-                   f"E{_fmt_e(e_h)} F{print_f}")
-        # Vertikale Wende-Linie zur nächsten Reihe (lw hoch), außer
-        # nach der letzten Linie. Bleibt am selben X — nur Y +lw.
-        if i < n_lines - 1:
-            out.append(f"G1 X{_fmt(x_target)} Y{_fmt(y + lw)} "
-                       f"E{_fmt_e(e_v)} F{print_f}")
-        rechts = not rechts
-    return out
+    out.extend(travel_to_fn(x0, y0))
 
+    x, y = x0, y0
+    for i in range(n_perimeters):
+        if i > 0:
+            x += line_spacing
+            y += line_spacing
+            # Step-inwards als Travel (kein E)
+            out.append(f"G1 X{_fmt(x)} Y{_fmt(y)} F7200")
+        # Aktuelle Box-Größe für diesen Perimeter
+        cur_w = width - 2 * i * line_spacing
+        cur_h = height - 2 * i * line_spacing
+        e_v = _extrusion(cur_h, lw, p.layer_height,
+                         p.filament_diameter, p.extrusion_multiplier)
+        e_h = _extrusion(cur_w, lw, p.layer_height,
+                         p.filament_diameter, p.extrusion_multiplier)
+        # up: Y +cur_h
+        y += cur_h
+        out.append(f"G1 X{_fmt(x)} Y{_fmt(y)} E{_fmt_e(e_v)} F{print_f}")
+        # right: X +cur_w
+        x += cur_w
+        out.append(f"G1 X{_fmt(x)} Y{_fmt(y)} E{_fmt_e(e_h)} F{print_f}")
+        # down: Y -cur_h
+        y -= cur_h
+        out.append(f"G1 X{_fmt(x)} Y{_fmt(y)} E{_fmt_e(e_v)} F{print_f}")
+        # left: X -cur_w
+        x -= cur_w
+        out.append(f"G1 X{_fmt(x)} Y{_fmt(y)} E{_fmt_e(e_h)} F{print_f}")
 
-def _anchor_marker_block(
-    p: GeneratorParams, x_left: float, y_center: float,
-    travel_to_fn, print_f: int,
-) -> list[str]:
-    """Gefülltes Rechteck links neben dem Pattern (Asymmetrie-Anker).
+    if not is_filled:
+        return out
 
-    x_left = linke Außenkante des Rechtecks (Frame-Innenkante = bx0+margin).
-    y_center = vertikale Mitte des Rechtecks (Chevron-Reihenmitte = py0+dy).
+    # 45°-Infill — direkte Übersetzung von Orca's draw_box Linie 316-460.
+    # spacing_45 = line_spacing / sin(45°): Infill-Linien-Abstand entlang
+    # der Diagonale. m_encroachment = 0.45 (aus Orca-Default), wie weit
+    # Infill in die innerste Perimeter hineinläuft.
+    m_encroachment = 0.45
+    spacing_45 = line_spacing / math.sin(math.pi / 4)
+    bound_modifier = (line_spacing * (n_perimeters - 1)
+                      + lw * (1 - m_encroachment))
+    x_min = x0 + bound_modifier
+    x_max = x0 + width - bound_modifier
+    y_min = y0 + bound_modifier
+    y_max = y0 + height - bound_modifier
+    x_count = int(math.floor((x_max - x_min) / spacing_45))
+    y_count = int(math.floor((y_max - y_min) / spacing_45))
+    x_remainder = (x_max - x_min) % spacing_45
+    y_remainder = (y_max - y_min) % spacing_45
 
-    Der Marker besteht aus n_lines vertikalen Linien im Abstand line_width,
-    abwechselnd nach oben / nach unten gezeichnet (Boustrophedon). Jede Linie
-    hat die Länge anchor_marker_height.
-    """
-    lw = _line_width(p)
-    y_low = y_center - p.anchor_marker_height / 2
-    y_high = y_center + p.anchor_marker_height / 2
-    e_v = _extrusion(p.anchor_marker_height, lw, p.layer_height,
-                     p.filament_diameter, p.extrusion_multiplier)
-    out: list[str] = []
-    n_lines = max(1, int(round(p.anchor_marker_width / lw)))
-    out.extend(travel_to_fn(x_left, y_low))
-    nach_oben = True
-    for i in range(n_lines):
-        x = x_left + i * lw
-        if nach_oben:
-            out.append(f"G1 X{_fmt(x)} Y{_fmt(y_high)} "
-                       f"E{_fmt_e(e_v)} F{print_f}")
+    x, y = x_min, y_min
+    # Fill-Start (Travel)
+    out.append(f"G1 X{_fmt(x)} Y{_fmt(y)} F7200  ; Fill: Move to fill start")
+
+    n_iter = x_count + y_count + (
+        1 if x_remainder + y_remainder >= spacing_45 else 0)
+    for i in range(n_iter):
+        if i < min(x_count, y_count):
+            # Diagonalen die nicht den oberen/rechten Rand erreichen
+            if i % 2 == 0:
+                x += spacing_45
+                y = y_min
+                out.append(f"G1 X{_fmt(x)} Y{_fmt(y)} F7200  ; Fill: Step right")
+                # Print up/left zu (x_min, y + (x - x_min))
+                new_y = y + (x - x_min)
+                new_x = x_min
+                e = _extrusion(
+                    math.hypot(new_x - x, new_y - y), lw, p.layer_height,
+                    p.filament_diameter, p.extrusion_multiplier)
+                x, y = new_x, new_y
+                out.append(f"G1 X{_fmt(x)} Y{_fmt(y)} E{_fmt_e(e)} "
+                           f"F{print_f}  ; Fill: Print up/left")
+            else:
+                y += spacing_45
+                x = x_min
+                out.append(f"G1 X{_fmt(x)} Y{_fmt(y)} F7200  ; Fill: Step up")
+                # Print down/right zu (x + (y - y_min), y_min)
+                new_x = x + (y - y_min)
+                new_y = y_min
+                e = _extrusion(
+                    math.hypot(new_x - x, new_y - y), lw, p.layer_height,
+                    p.filament_diameter, p.extrusion_multiplier)
+                x, y = new_x, new_y
+                out.append(f"G1 X{_fmt(x)} Y{_fmt(y)} E{_fmt_e(e)} "
+                           f"F{print_f}  ; Fill: Print down/right")
+        elif i < max(x_count, y_count):
+            # Boxes wider than tall OR taller than wide — Diagonalen
+            # die einen Rand erreichen aber nicht den anderen
+            if x_count > y_count:
+                if i % 2 == 0:
+                    x += spacing_45
+                    y = y_min
+                    out.append(f"G1 X{_fmt(x)} Y{_fmt(y)} F7200  ; Fill: Step right")
+                    new_x = x - (y_max - y_min)
+                    new_y = y_max
+                    e = _extrusion(
+                        math.hypot(new_x - x, new_y - y), lw, p.layer_height,
+                        p.filament_diameter, p.extrusion_multiplier)
+                    x, y = new_x, new_y
+                    out.append(f"G1 X{_fmt(x)} Y{_fmt(y)} E{_fmt_e(e)} "
+                               f"F{print_f}  ; Fill: Print up/left")
+                else:
+                    if i == y_count:
+                        x += spacing_45 - y_remainder
+                        y_remainder = 0
+                    else:
+                        x += spacing_45
+                    y = y_max
+                    out.append(f"G1 X{_fmt(x)} Y{_fmt(y)} F7200  ; Fill: Step right")
+                    new_x = x + (y_max - y_min)
+                    new_y = y_min
+                    e = _extrusion(
+                        math.hypot(new_x - x, new_y - y), lw, p.layer_height,
+                        p.filament_diameter, p.extrusion_multiplier)
+                    x, y = new_x, new_y
+                    out.append(f"G1 X{_fmt(x)} Y{_fmt(y)} E{_fmt_e(e)} "
+                               f"F{print_f}  ; Fill: Print down/right")
+            else:
+                # box taller than wide — analog spiegelverkehrt
+                # (in unserem Use-Case Top-Bar ist x_count > y_count
+                # weil 84 mm × 13 mm; daher kein concrete Fall — aber
+                # für draw_box-Vollständigkeit drin)
+                if i % 2 == 0:
+                    y += spacing_45
+                    x = x_min
+                    out.append(f"G1 X{_fmt(x)} Y{_fmt(y)} F7200  ; Fill: Step up")
+                    new_y = y - (x_max - x_min)
+                    new_x = x_max
+                    e = _extrusion(
+                        math.hypot(new_x - x, new_y - y), lw, p.layer_height,
+                        p.filament_diameter, p.extrusion_multiplier)
+                    x, y = new_x, new_y
+                    out.append(f"G1 X{_fmt(x)} Y{_fmt(y)} E{_fmt_e(e)} "
+                               f"F{print_f}  ; Fill: Print down/right")
+                else:
+                    if i == x_count:
+                        y += spacing_45 - x_remainder
+                        x_remainder = 0
+                    else:
+                        y += spacing_45
+                    x = x_max
+                    out.append(f"G1 X{_fmt(x)} Y{_fmt(y)} F7200  ; Fill: Step up")
+                    new_y = y + (x_max - x_min)
+                    new_x = x_min
+                    e = _extrusion(
+                        math.hypot(new_x - x, new_y - y), lw, p.layer_height,
+                        p.filament_diameter, p.extrusion_multiplier)
+                    x, y = new_x, new_y
+                    out.append(f"G1 X{_fmt(x)} Y{_fmt(y)} E{_fmt_e(e)} "
+                               f"F{print_f}  ; Fill: Print up/left")
         else:
-            out.append(f"G1 X{_fmt(x)} Y{_fmt(y_low)} "
-                       f"E{_fmt_e(e_v)} F{print_f}")
-        nach_oben = not nach_oben
+            # Letzte Iteration für x_remainder + y_remainder >= spacing_45
+            # (kleine Eck-Diagonale) — vereinfacht: skip wenn beide 0
+            if x_remainder == 0 and y_remainder == 0:
+                continue
+            # Wir lassen diese Edge-Case-Diagonale weg — minimaler
+            # Footprint-Unterschied, kein Druck-Defekt.
+
     return out
+
+
+# _top_bar_block entfernt 2026-05-25 — ersetzt durch _draw_box(is_filled=True) (Task 5)
+
+
+# _anchor_marker_block entfernt 2026-05-25 — Orca-Stil verwendet keinen
+# separaten Asymmetrie-Anker; die Top-Bar oben reicht für orientation.py (Task 8)
 
 
 def _pa_labels_block(
@@ -283,27 +399,33 @@ def _pa_labels_block(
 ) -> list[str]:
     """Hochkant rotierte PA-Labels auf der Top-Bar.
 
-    Ein Label pro Chevron-Gruppe. Position: über dem Chevron, label_y_top
-    ist die Y-Koordinate der oberen Glyph-Kante (label läuft nach unten,
-    weil rotation=90).
+    Position pro Label: Label-Start-X = Chevron-Wall-Cluster-Mitte
+    minus halbe Glyph-Höhe (= Orca's glyph_start_x-Logik, siehe
+    reference/orca_calib.cpp Linie 821-844). Damit sitzt das Label
+    über dem Anker-Punkt am Frame, NICHT über der weiter nach
+    rechts ausladenden Chevron-Spitze.
+
+    NOT-TO-DO: Label über Chevron-Tip-Mitte zentrieren (= alte
+    Implementation mit `+ dx` im Offset). User-Anforderung
+    2026-05-25 explizit: "an den Ankerpunkt am Frame, damit man
+    es überhaupt zuordnen könnte". Mittellage über Tip führte
+    dazu dass die visuelle Zuordnung Label↔Chevron unklar war
+    (Labels überlappten teilweise mit Nachbar-Chevrons).
     """
     out: list[str] = []
+    wall_off = _wall_x_offset(p)
+    speed = print_speed if print_speed is not None else p.speed_print
     for j, pa in enumerate(pa_values):
-        # Nur jeden label_stride-ten PA-Wert beschriften (Default 2).
-        # Zwischenwerte ergeben sich kontextual aus den beschrifteten
-        # Nachbarn — spart Platz und macht jedes Label deutlich lesbarer.
         if j % p.label_stride != 0:
             continue
-        # X-Mitte der Chevron-Gruppe j.
-        gx_center = px0 + j * group_advance + (
-            (p.wall_count - 1) * _wall_x_offset(p) + _chevron_deltas(p)[0]
-        ) / 2
-        # Bei rotation=90 ist der Cursor-Anker die linke obere Ecke
-        # der ersten Glyphe. Wir möchten das Label horizontal an der
-        # Chevron-Mitte zentriert — die rotierte Glyph-Höhe wird nach
-        # rechts in X gerendert, also Start x = gx_center -
-        # label_glyph_height/2.
-        x_start = gx_center - p.label_glyph_height / 2
+        # glyph_start_x(j) = px0 + j*group_advance
+        #   + (wall_count-1)*wall_off/2 - glyph_len_x/2
+        # Entspricht Orca's Logik: Label über Wall-Cluster-Mitte,
+        # nicht über der Chevron-Tip-Mitte (die um dx/2 weiter rechts
+        # läge). Siehe reference/orca_calib.cpp Linie 821-844.
+        x_start = (px0 + j * group_advance
+                   + (p.wall_count - 1) * wall_off / 2
+                   - p.label_glyph_height / 2)
         out.extend(render_label_gcode(
             text=_fmt(pa),
             x=x_start, y=label_y_top,
@@ -314,59 +436,14 @@ def _pa_labels_block(
             layer_height=p.layer_height,
             filament_diameter=p.filament_diameter,
             extrusion_multiplier=p.extrusion_multiplier,
-            print_speed=print_speed if print_speed is not None else p.speed_print,
+            print_speed=speed,
             travel_speed=p.speed_travel,
             rotation=90,
         ))
     return out
 
 
-def _header_labels_block(
-    p: GeneratorParams, x_start: float, y_top: float,
-    print_speed: float | None = None,
-) -> list[str]:
-    """Speed/Accel-Header: 2 hochkant rotierte Spalten links der PA-Labels.
-
-    Spalte 1 zeigt speed_print (immer), Spalte 2 zeigt accel (nur wenn > 0).
-    Die Glyph-Höhe ist etwas größer als bei PA-Labels (header_glyph_height
-    vs. label_glyph_height), um einen visuellen Header-Effekt zu erzeugen.
-    Bei accel=0 entfällt die Accel-Spalte — "0" als Beschleunigung wäre
-    irreführend (kein Velocity-Limit gesetzt).
-    """
-    out: list[str] = []
-    # Spalte 1: Speed (immer vorhanden)
-    out.extend(render_label_gcode(
-        text=_fmt(p.speed_print),
-        x=x_start, y=y_top,
-        glyph_height=p.header_glyph_height,
-        glyph_width=p.header_glyph_width,
-        glyph_gap=p.label_glyph_gap,
-        line_width=_line_width(p),
-        layer_height=p.layer_height,
-        filament_diameter=p.filament_diameter,
-        extrusion_multiplier=p.extrusion_multiplier,
-        print_speed=print_speed if print_speed is not None else p.speed_print,
-        travel_speed=p.speed_travel,
-        rotation=90,
-    ))
-    # Spalte 2: Accel (nur wenn > 0 — "0" wäre irreführend)
-    if p.accel > 0:
-        x_col2 = x_start + p.header_glyph_height + p.header_column_spacing
-        out.extend(render_label_gcode(
-            text=_fmt(p.accel),
-            x=x_col2, y=y_top,
-            glyph_height=p.header_glyph_height,
-            glyph_width=p.header_glyph_width,
-            glyph_gap=p.label_glyph_gap,
-            line_width=_line_width(p),
-            layer_height=p.layer_height,
-            filament_diameter=p.filament_diameter,
-            extrusion_multiplier=p.extrusion_multiplier,
-            print_speed=print_speed if print_speed is not None else p.speed_print,
-            travel_speed=p.speed_travel,
-            rotation=90,
-        ))
-    return out
+# _header_labels_block entfernt 2026-05-25 — ersetzt durch inline Flow/Accel-Slots in generate() Layer 1 (Task 7)
 
 
 def generate(params: GeneratorParams) -> str:
@@ -388,26 +465,43 @@ def generate(params: GeneratorParams) -> str:
     retract = _retract_block(p)
     unretract = _unretract_block(p)
 
-    # Pattern-Abmessungen und Bett-Zentrierung (v2: margin=0 + left_padding)
+    # Pattern-Abmessungen und Bett-Zentrierung (margin=0 + pattern_shift)
     chevron_h = 2 * dy
     pattern_w = (
         (len(pa_values) - 1) * adv + (p.wall_count - 1) * wall_off + dx
     )
     pattern_h = p.top_bar_height + p.chevron_band_gap + chevron_h
-    margin = 0.0  # v2: Frame berührt Pattern direkt (kein Luftspalt)
-    # left_padding: Anker-Marker links innerhalb des Frames + kleiner Gap
-    # zur ersten Chevron-Basis (verhindert Überlappung mit Chevron-Linien)
-    left_padding = p.anchor_marker_width + 0.5
-    total_w = pattern_w + left_padding
+    margin = 0.0  # Frame berührt Pattern direkt (kein Luftspalt)
+    # pattern_shift: X-Versatz vom Frame-Links-Rand bis zum ersten
+    # Chevron-Arm-Start. Macht Platz für die Frame-Perimeter-Wandstärke
+    # (wall_count-1) * line_spacing) PLUS Nozzle-Linienbreite PLUS
+    # horizontales Padding (~0.5 mm) für saubere Label-Ausrichtung.
+    # Reproduziert Orca's pattern_shift() (orca_calib.cpp Linie 893).
+    line_spacing = lw - p.layer_height * (1 - math.pi / 4)
+    glyph_padding_horizontal = 0.5
+    pattern_shift = ((p.wall_count - 1) * line_spacing
+                     + lw + glyph_padding_horizontal)
+    # Settings-Extent: tight spacing für Flow (+ optional Accel) rechts
+    # nach den PA-Labels. Frame muss so weit reichen, dass die Settings
+    # AUF der Top-Bar liegen, nicht in leeres Bett-Areal.
+    # Bug (Task 9 Render): glyph_start_x(num_patterns + 2/+4) mit
+    # group_advance ~18mm schiebt Settings ~70mm rechts vom Frame.
+    # Fix: settings nutzen label_glyph_height + 1.5mm tight spacing,
+    # Frame total_w wird um settings_extent erweitert.
+    settings_gap = 5.0  # mm Abstand letztes PA-Label → erstes Settings-Label
+    settings_spacing = p.label_glyph_height + 1.5
+    n_settings = 2 if p.accel > 0 else 1
+    settings_extent = settings_gap + n_settings * settings_spacing + 1.0
+    total_w = pattern_w + pattern_shift + settings_extent
     bx0 = p.bed_x / 2 - (total_w + 2 * margin) / 2
     by0 = p.bed_y / 2 - (pattern_h + 2 * margin) / 2
     bx1 = bx0 + total_w + 2 * margin
     by1 = by0 + pattern_h + 2 * margin
-    px0 = bx0 + margin + left_padding      # Chevron-Start nach Anker-Bereich
+    px0 = bx0 + margin + pattern_shift      # Chevron-Start nach Frame-Wand-Padding
     py0 = by0 + margin                     # Chevron-Bottom
-    # Top-Bar-Y-Bereich:
+    # Top-Bar-Y-Bereich (y_high wird nicht mehr separat berechnet —
+    # tb_height wird in der Layer-Schleife aus top_bar_height - line_spacing ermittelt):
     top_bar_y_low = by1 - margin - p.top_bar_height
-    top_bar_y_high = by1 - margin
 
     def travel_to(x: float, y: float) -> list[str]:
         """Travel mit Retract+De-Retract (Ellis-Stil)."""
@@ -460,24 +554,21 @@ def generate(params: GeneratorParams) -> str:
             f"G1 X{_fmt(p.purge_x_margin + p.purge_length)} "
             f"Y{_fmt(purge_y)} E{_fmt_e(e_purge)} F{purge_f}")
 
-    # Rahmen-Box (v2: 3-Linien-"["-Form — links + unten;
-    # oben implizit durch Top-Bar-Oberkante, kein expliziter Rechts-Strich)
-    e_v = _extrusion(by1 - by0, lw, p.layer_height,
-                     p.filament_diameter, p.extrusion_multiplier)
-    e_h = _extrusion(bx1 - bx0, lw, p.layer_height,
-                     p.filament_diameter, p.extrusion_multiplier)
-    # Frame-Box-Koordinaten als Marker-Kommentar — Parser nutzt sie
-    # bevorzugt, weil das v2-"["-Frame nicht als 4-Linien-Rechteck
-    # erkennbar wäre (nur 2 extrudierende Frame-Moves).
+    # Frame-Box-Marker als Kommentar — Parser nutzt diese, da auch ein
+    # 3-Perimeter-Frame im GCode als viele Linien erscheint.
     out.append(
         f"; PA_ANALYZER_FRAME X0={_fmt(bx0)} Y0={_fmt(by0)} "
         f"X1={_fmt(bx1)} Y1={_fmt(by1)}")
-    # Frame wird in Layer 1 gedruckt → first_layer_print_f für Bett-Haftung
-    out.extend(travel_to(bx0, by1))
-    out.append(f"G1 X{_fmt(bx0)} Y{_fmt(by0)} "
-               f"E{_fmt_e(e_v)} F{first_layer_print_f}")  # links: oben → unten
-    out.append(f"G1 X{_fmt(bx1)} Y{_fmt(by0)} "
-               f"E{_fmt_e(e_h)} F{first_layer_print_f}")  # unten: links → rechts
+    # Frame als 3-Perimeter umlaufender Rahmen (Orca-Stil), ohne Infill.
+    # Höhe = nur bis Top-Bar-Bottom; Top-Bar wird separat als zweite
+    # Box gezeichnet (Task 5). Wird in Layer 0 mit first_layer_print_f
+    # gedruckt für Bett-Haftung.
+    out.extend(_draw_box(
+        p, bx0, by0,
+        width=bx1 - bx0, height=top_bar_y_low - by0,
+        n_perimeters=p.wall_count, is_filled=False,
+        travel_to_fn=travel_to, print_f=first_layer_print_f,
+    ))
 
     # SET_PRESSURE_ADVANCE-Präfix vorbereiten (optional mit EXTRUDER=)
     set_pa_prefix = (
@@ -504,25 +595,21 @@ def generate(params: GeneratorParams) -> str:
         # Lüfter nach Layer 1 auf den normalen Wert umschalten
         if layer == 1 and p.fan_speed != p.fan_speed_layer1:
             out.append(f"M106 S{round(p.fan_speed * 255)}")
-        # Top-Bar NUR in Layer 0 (Orca-Stil): einzelne dünne Schicht
-        # als Untergrund für die Labels in Layer 1. Spart Material,
-        # macht die Labels in Layer 1 als sauberes Relief sichtbar.
-        # CV-Pipeline (orientation.py) sieht die Top-Bar von oben
-        # unverändert — Schicht-Höhe egal.
+        # Top-Bar NUR in Layer 0 (Orca-Stil): 3 Perimeter + 45°-Infill,
+        # mit ~0.5 mm Lücke (=line_spacing) zwischen Frame-Top (=
+        # top_bar_y_low) und Top-Bar-Bottom — das verhindert
+        # Verschmelzung der Wände beider Boxen im Slicer-Output.
         if layer == 0:
-            out.extend(_top_bar_block(
-                p, bx0, bx1,
-                top_bar_y_low, top_bar_y_high,
-                travel_to, layer_print_f,
+            line_spacing = (
+                _line_width(p) - p.layer_height * (1 - math.pi / 4))
+            tb_y0_gapped = top_bar_y_low + line_spacing
+            tb_height = p.top_bar_height - line_spacing
+            out.extend(_draw_box(
+                p, bx0, tb_y0_gapped,
+                width=bx1 - bx0, height=tb_height,
+                n_perimeters=p.wall_count, is_filled=True,
+                travel_to_fn=travel_to, print_f=layer_print_f,
             ))
-        # Anker-Marker links angedockt an Frame-Left (bx0).
-        # v2: margin=0, Anker sitzt direkt an der Frame-Linie.
-        # y_center = Chevron-Mitte (zwischen py0 und py0 + 2*dy).
-        chevron_center_y = py0 + dy
-        out.extend(_anchor_marker_block(
-            p, bx0, chevron_center_y,
-            travel_to, layer_print_f,
-        ))
         for j, pa in enumerate(pa_values):
             out.append(f"M117 PA {_fmt(pa)}")
             out.append(f"{set_pa_prefix}{_fmt(pa)}")
@@ -541,28 +628,61 @@ def generate(params: GeneratorParams) -> str:
                     f"E{_fmt_e(e_arm)} F{layer_print_f}"
                 )
 
-        # Labels in Layer 1 (zweite Schicht, Orca-Stil): sitzen als
-        # Relief auf der einlagigen Top-Bar (Layer 0). PA=0 explizit
-        # setzen (Labels sollen visuell sauber sein, keine PA-Effekte).
-        # Druck mit first_layer_speed (langsam → klare Glyphen).
+        # Labels in Layer 1 (Orca-Stil): Relief auf der einlagigen
+        # Top-Bar. PA=0 explizit setzen, mit first_layer_speed drucken.
+        # Settings (Flow, Accel) folgen NACH den PA-Labels — auf
+        # zusätzlichen Glyph-Slots auf der gleichen Top-Bar.
         if layer == 1:
-            # Labels mit PA=0 drucken — sauber, ohne PA-Tropfen.
             out.append(f"{set_pa_prefix}0")
-            label_y_top = top_bar_y_high - 0.5  # 0.5 mm Padding oben
-            header_x_start = bx0 + 0.5
+            label_y_top = (by1 - margin) - 0.5  # 0.5 mm Padding oben
             label_speed = p.first_layer_speed
-            out.extend(_header_labels_block(
-                p, header_x_start, label_y_top,
-                print_speed=label_speed,
-            ))
-            pa_labels_x_offset = (
-                2 * p.header_glyph_height + p.header_column_spacing
-                + p.header_to_labels_gap
-            )
+            # 1) PA-Labels (über jedem Chevron-Anker)
             out.extend(_pa_labels_block(
-                p, pa_values, px0 + pa_labels_x_offset, label_y_top, adv,
+                p, pa_values, px0, label_y_top, adv,
                 print_speed=label_speed,
             ))
+            # 2) Settings (Flow + Accel) NACH den PA-Labels —
+            #    tight spacing statt Orca's glyph_start_x(num_patterns + 2/+4).
+            #    Orca's Slot-Formel skaliert nicht mit unserer wide group_advance
+            #    (~18mm) → Settings landen ~70mm rechts vom Frame (Task 9 Bug).
+            #    Fix: settings_gap=5mm nach letztem PA-Label, dann tight spacing
+            #    label_glyph_height + 1.5mm. Frame total_w wurde bereits
+            #    um settings_extent erweitert (siehe pattern_shift-Block oben).
+            num_patterns = len(pa_values)
+            settings_gap_local = 5.0
+            settings_spacing_local = p.label_glyph_height + 1.5
+            flow_x = px0 + num_patterns * adv + settings_gap_local
+            accel_x = flow_x + settings_spacing_local
+            flow_value = p.extrusion_multiplier * 100  # als Prozent
+            out.extend(render_label_gcode(
+                text=_fmt(flow_value),
+                x=flow_x, y=label_y_top,
+                glyph_height=p.label_glyph_height,
+                glyph_width=p.label_glyph_width,
+                glyph_gap=p.label_glyph_gap,
+                line_width=_line_width(p),
+                layer_height=p.layer_height,
+                filament_diameter=p.filament_diameter,
+                extrusion_multiplier=p.extrusion_multiplier,
+                print_speed=label_speed,
+                travel_speed=p.speed_travel,
+                rotation=90,
+            ))
+            if p.accel > 0:
+                out.extend(render_label_gcode(
+                    text=_fmt(p.accel),
+                    x=accel_x, y=label_y_top,
+                    glyph_height=p.label_glyph_height,
+                    glyph_width=p.label_glyph_width,
+                    glyph_gap=p.label_glyph_gap,
+                    line_width=_line_width(p),
+                    layer_height=p.layer_height,
+                    filament_diameter=p.filament_diameter,
+                    extrusion_multiplier=p.extrusion_multiplier,
+                    print_speed=label_speed,
+                    travel_speed=p.speed_travel,
+                    rotation=90,
+                ))
 
     # End-Sequenz: Retract, Z-Raise, optionaler Cooldown (Sicherheits-
     # netz; viele PRINT_END-Macros machen das selbst — dann

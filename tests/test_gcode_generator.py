@@ -360,63 +360,6 @@ def test_generate_emittiert_top_bar_vor_erstem_chevron():
     )
 
 
-def test_generate_setzt_anker_marker_links():
-    # Anker-Marker = gefülltes Rechteck, das linksseitig an Frame-Left (bx0)
-    # andockt und vertikal in der Chevron-Mitte sitzt.
-    #
-    # Geometrie (Default-Params, v2: margin=0, left_padding=2.5):
-    #   x-Bereich : [bx0, bx0 + anchor_marker_width]
-    #   y-Bereich : [chevron_center_y - 4, chevron_center_y + 4]
-    #   n_lines   : round(anchor_marker_width / line_width) = 4
-    #
-    # Test-Strategie: extrudierende G1-Moves im Anker-Rechteck suchen.
-    # Chevron-Bereich überschneidet sich nicht mit diesem Y-Fenster.
-    import re
-    p = GeneratorParams()
-    g = generate(p)
-
-    lw = _line_width(p)
-    dx, dy = _chevron_deltas(p)
-    adv = _group_advance(p)
-    pa_vals = _pa_values(p)
-    pattern_w = (len(pa_vals) - 1) * adv + (p.wall_count - 1) * _wall_x_offset(p) + dx
-    chevron_h = 2 * dy
-    pattern_h = p.top_bar_height + p.chevron_band_gap + chevron_h
-    # v2: margin=0, left_padding=anchor_marker_width + 0.5
-    margin = 0.0
-    left_padding = p.anchor_marker_width + 0.5
-    total_w = pattern_w + left_padding
-    bx0 = p.bed_x / 2 - (total_w + 2 * margin) / 2
-    by0 = p.bed_y / 2 - (pattern_h + 2 * margin) / 2
-    py0 = by0 + margin
-    # Anker sitzt an bx0 (Frame-Left), nicht mehr an bx0+margin
-    x_left = bx0
-    x_right = x_left + p.anchor_marker_width + 0.5   # +0.5 Puffer
-    chevron_center_y = py0 + dy
-    y_low = chevron_center_y - p.anchor_marker_height / 2 - 0.5   # Puffer
-    y_high = chevron_center_y + p.anchor_marker_height / 2 + 0.5
-
-    extruding_hits = []
-    for line in g.splitlines():
-        if " E" not in line or not line.startswith("G1"):
-            continue
-        mx = re.search(r"X([\d.-]+)", line)
-        my = re.search(r"Y([\d.-]+)", line)
-        if not mx or not my:
-            continue
-        x = float(mx.group(1))
-        y = float(my.group(1))
-        if x_left <= x <= x_right and y_low <= y <= y_high:
-            extruding_hits.append((x, y))
-
-    assert len(extruding_hits) >= 4, (
-        f"Anker-Marker fehlt — nur {len(extruding_hits)} extrudierende Moves "
-        f"im Anker-Rechteck X[{x_left:.2f},{x_right:.2f}] "
-        f"Y[{y_low:.2f},{y_high:.2f}] gefunden "
-        f"(erwartet ≥ 4 = anchor_marker_width / line_width)"
-    )
-
-
 def test_generate_emittiert_set_velocity_limit_accel():
     p = GeneratorParams(accel=2000.0)
     g = generate(p)
@@ -525,19 +468,15 @@ def test_generate_labels_nur_in_oberster_layer():
         f"Label-Layer 1 ({moves_layer1} G1) nicht deutlich größer als "
         f"label-freie Layer 2 ({moves_layer2} G1) — Labels fehlen.")
 
-    # B) Zwei label-freie Layer (Layer 0-Block und Layer 1) sind annähernd
-    #    gleich groß — beweist, dass Differenz aus Labels stammt, nicht
-    #    aus anderem layerspezifischem Code.
+    # B) Layer 0 hat Top-Bar (3-Perimeter + 45°-Infill) — erheblich mehr Moves
+    #    als Layer 1 (Labels + Chevrons) oder Layer 2 (nur Chevrons). Diese
+    #    Ungleichheit ist nach Task 5 (Orca-Stil-Infill) beabsichtigt.
+    #    Wir prüfen nur die Mindest-Bewegungsanzahl: Layer 0 muss mehr Moves
+    #    als Layer 1 haben (Infill-Box > reine Chevrons).
     moves_layer0_block = _g1_count(z_layer0, z_layer1)
-    # Layer 0 hat Top-Bar (viele Moves), Layer 1 hat Labels (auch viele).
-    # Layer 0 + Top-Bar ≈ Layer 1 + Labels (Top-Bar-Stadion und Labels
-    # sind in der Größenordnung ähnlich). Erlauben einen großzügigen
-    # Toleranz-Bereich.
-    assert abs(moves_layer0_block - moves_layer1) < 250, (
-        f"Layer-0-Block ({moves_layer0_block} G1) und Label-Layer 1 "
-        f"({moves_layer1} G1) weichen um "
-        f"{abs(moves_layer0_block - moves_layer1)} ab — "
-        "ungewöhnlich große Differenz.")
+    assert moves_layer0_block > moves_layer1, (
+        f"Layer 0 ({moves_layer0_block} G1) sollte durch Top-Bar-Infill "
+        f"mehr Moves haben als Label-Layer 1 ({moves_layer1} G1).")
 
 
 def test_generate_beschriftet_speed_accel_header():
@@ -576,61 +515,6 @@ def test_generate_kein_accel_kein_header_label():
         "konditional emittiert")
 
 
-def test_generate_drei_linien_frame_kein_rechts():
-    """Frame ist 3-Linien-"["-Form: links + Top-Bar (implizit oben) + unten.
-    KEIN expliziter Frame-Right-Strich — Chevron-Spitzen bilden rechten Rand.
-
-    Erwartung: im GCode gibt es genau 2 Frame-Strich-G1-Moves
-    (links vertikal, unten horizontal). Die Top-Bar ist als
-    Vollfüllung gerendert (mehrere Linien); die oberste Linie der
-    Top-Bar fungiert als Frame-Top.
-    """
-    p = GeneratorParams()
-    g = generate(p)
-    # Hole alle G1-Bewegungen aus dem ERSTEN Layer (vor erstem
-    # SET_PRESSURE_ADVANCE) — das umfasst Purge, Frame, Top-Bar, Anker.
-    lines = g.splitlines()
-    pa_idx = next(i for i, l in enumerate(lines)
-                  if "SET_PRESSURE_ADVANCE" in l)
-    pre_pa = lines[:pa_idx]
-    # Zähle horizontale Frame-Bottom-Linie und vertikale Frame-Left-Linie.
-    # Frame-Bottom: einzige extrudierende horizontale Linie auf y == by0
-    # Frame-Left: einzige extrudierende vertikale Linie auf x == bx0
-    # Wir prüfen einfach: KEINE extrudierende Linie liegt bei x == bx1
-    # (das wäre Frame-Right — und das gibt's nicht mehr).
-    # Approximation: Bett-Mitte ist 150,150 (bed_x/y default 300/300).
-    # Pattern-Breite ~75mm, also bx1 ≈ 150 + 37.5 = 187.5.
-    # Wir suchen explizit nach Moves die x ≈ 187 erreichen UND nicht
-    # zu einem Chevron-Apex gehören (chevron-apex hat charakteristisches Y).
-    import re
-    # Sammle alle (x, y, e) für extrudierende Pre-PA Moves.
-    extrudiert = []
-    for line in pre_pa:
-        m = re.match(r"^G1 X([\d.-]+) Y([\d.-]+).*E([\d.-]+)", line)
-        if m:
-            extrudiert.append((float(m.group(1)), float(m.group(2))))
-    assert len(extrudiert) > 0, "Keine extrudierten Frame/Top-Bar-Moves"
-    # Maximales X im Pre-PA-Bereich = Frame-Right wäre hier
-    max_x = max(x for x, y in extrudiert)
-    # Wenn es einen Frame-Right gäbe: viele Moves bei max_x mit
-    # verschiedenen Y (vertikale Frame-Linie). Wir checken: max_x sollte
-    # bei Top-Bar-Linien auftauchen (mehrere horizontale Moves enden bei
-    # max_x), ABER nicht als isolierte vertikale Linie.
-    # Vereinfachung: zähle MOVES bei x == max_x mit unterschiedlichen Y.
-    # Bei einem 4-Linien-Frame wären das exakt 2 Moves (oben-rechts, unten-rechts).
-    # Bei 3-Linien-Frame (kein rechts): die max_x-Moves sind Top-Bar-Endpunkte
-    # (mehrere Y-Werte, weil mehrere Top-Bar-Linien dort enden).
-    moves_at_max_x = [(x, y) for x, y in extrudiert if abs(x - max_x) < 0.01]
-    # Mehr als 2 Moves bei max_x → Top-Bar-Stadion-Füllung (viele Linien
-    # enden dort, je nach Boustrophedon-Richtung). Bei einem expliziten
-    # Frame-Right wären es genau 2 (oben-rechts, unten-rechts).
-    # Tatsächlich Top-Bar hat ~26 Linien (12mm/0.45mm), ungefähr die
-    # Hälfte endet bei max_x → ~13 Moves.
-    assert len(moves_at_max_x) > 5, (
-        f"Nur {len(moves_at_max_x)} Moves bei max_x={max_x:.2f} — "
-        f"deutet auf einen expliziten Frame-Right hin (3-Linien-Frame "
-        f"hätte deutlich mehr durch Top-Bar-Boustrophedon)")
-
 
 def test_generate_top_bar_beruehrt_chevrons():
     """chevron_band_gap = 0 → Top-Bar-Unterkante = Chevron-Oberkante."""
@@ -649,12 +533,14 @@ def test_generate_top_bar_beruehrt_chevrons():
 
 
 def test_generate_margin_null_kein_padding_zwischen_frame_und_pattern():
-    """v2: margin = 0, aber left_padding = anchor_marker_width + 0.5
-    für den Anker-Bereich links."""
+    """margin = 0, pattern_shift = (wall_count-1)*line_spacing + lw + 0.5
+    (Orca-Stil, kein Anker-Marker mehr).
+
+    Test prüft die Y-Spannweite (orthogonal zu pattern_shift): das
+    Pattern wächst NICHT vertikal über die erwartete Höhe hinaus.
+    """
     p = GeneratorParams()
     g = generate(p)
-    # Total-Width = pattern_w + left_padding (links für Anker)
-    # Frame-Left ist bei bx0, Anker bei bx0, Chevron-Start bei bx0+left_padding.
     # Indirekt prüfbar: Y-Span ist GENAU pattern_h (kein extra margin).
     import re
     ys = []
@@ -825,3 +711,354 @@ def test_generate_label_stride_eins_emittiert_alle_labels():
     # Hier nur prüfen: kein Crash und plausible Ausgabe.
     assert "G1" in g
     assert "SET_PRESSURE_ADVANCE" in g
+
+
+def test_draw_box_ein_perimeter_zeichnet_rechteck():
+    """Ein Perimeter = 4 extrudierte Linien (up, right, down, left)
+    plus ein Travel-Move zum Box-Start."""
+    from pa_analyzer.gcode_generator import _draw_box
+    p = GeneratorParams()
+    def travel_to(x, y):
+        return [f"G1 X{x} Y{y} F7200"]
+    lines = _draw_box(p, x0=100.0, y0=200.0, width=30.0, height=20.0,
+                     n_perimeters=1, is_filled=False,
+                     travel_to_fn=travel_to, print_f=6000)
+    # 1 Travel zum Start + 4 extrudierte Linien
+    g1 = [l for l in lines if l.startswith("G1")]
+    extruded = [l for l in g1 if " E" in l]
+    assert len(extruded) == 4, (
+        f"1 Perimeter sollte 4 extrudierte Moves haben, hat {len(extruded)}")
+    # Reihenfolge: up (Y wechselt), right (X wechselt), down, left
+    # Check: erste extrudierte Linie geht in +Y (up)
+    assert "Y220" in extruded[0], "Erste Linie sollte 'up' (Y +20) sein"
+    assert "X130" in extruded[1], "Zweite Linie sollte 'right' (X +30) sein"
+
+
+def test_draw_box_drei_perimeter_nest_inwards():
+    """3 Perimeter = 12 extrudierte Linien + 2 Step-Inwards-Travels."""
+    from pa_analyzer.gcode_generator import _draw_box, _line_width
+    import math
+    p = GeneratorParams()
+    def travel_to(x, y):
+        return [f"G1 X{x} Y{y} F7200"]
+    lines = _draw_box(p, x0=100.0, y0=200.0, width=30.0, height=20.0,
+                     n_perimeters=3, is_filled=False,
+                     travel_to_fn=travel_to, print_f=6000)
+    extruded = [l for l in lines if l.startswith("G1") and " E" in l]
+    assert len(extruded) == 12, (
+        f"3 Perimeter sollten 12 Moves haben, sind {len(extruded)}")
+    travels = [l for l in lines if l.startswith("G1") and " E" not in l]
+    # 1 Travel zum Start + 2 Step-Inwards-Travels (zwischen
+    # Perimetern 1→2 und 2→3) = 3 Travels.
+    assert len(travels) == 3, (
+        f"Erwartet 3 Travels (Start + 2 Step-Inwards), sind {len(travels)}")
+    # Step-Inwards: Perimeter 2 startet bei (x0 + line_spacing, y0 + line_spacing)
+    lw = _line_width(p)
+    spacing = lw - p.layer_height * (1 - math.pi / 4)
+    expected_x = round(100.0 + spacing, 4)
+    expected_y = round(200.0 + spacing, 4)
+    assert f"X{expected_x:g} Y{expected_y:g}" in travels[1], (
+        f"2. Travel sollte zu ({expected_x}, {expected_y}) gehen, "
+        f"ist: {travels[1]}")
+
+
+def test_draw_box_mit_infill_emittiert_45grad_diagonalen():
+    """Bei is_filled=True kommt nach den Perimetern ein 45°-Infill.
+    Jede Infill-Print-Linie hat |ΔX| == |ΔY| (45°).
+    """
+    from pa_analyzer.gcode_generator import _draw_box
+    import re
+    p = GeneratorParams()
+    def travel_to(x, y):
+        return [f"G1 X{x} Y{y} F7200"]
+    lines = _draw_box(p, x0=100.0, y0=200.0, width=30.0, height=20.0,
+                     n_perimeters=3, is_filled=True,
+                     travel_to_fn=travel_to, print_f=6000)
+    # Infill-Linien folgen den Perimetern. Extrudierte Linien NACH den
+    # 12 Perimeter-Moves sind Infill-Print-Linien.
+    extruded = [l for l in lines if l.startswith("G1") and " E" in l]
+    assert len(extruded) > 12, (
+        "is_filled=True sollte zusätzliche extrudierte Linien "
+        "(Infill) emittieren")
+    infill_lines = extruded[12:]
+    # Für jede Infill-Linie: |ΔX| ≈ |ΔY| (45°)
+    prev_x, prev_y = None, None
+    for l in lines:
+        m = re.match(r"G1 X([\d.-]+) Y([\d.-]+)", l)
+        if not m:
+            continue
+        x, y = float(m.group(1)), float(m.group(2))
+        if prev_x is not None and "E" in l and "Fill: Print" in l:
+            dx = abs(x - prev_x)
+            dy = abs(y - prev_y)
+            assert abs(dx - dy) < 0.01, (
+                f"Infill-Linie nicht 45°: ΔX={dx:.3f} vs ΔY={dy:.3f}")
+        prev_x, prev_y = x, y
+
+
+def test_frame_hat_drei_umlaufende_wandlinien():
+    """Frame um Chevrons soll 3 konzentrische, GESCHLOSSENE Perimeter
+    haben (Orca-Stil). Alte Implementierung war "[" — 2 offene Linien
+    (links + unten) ohne Rückkehr zum Start.
+
+    Test prüft präzise: die ERSTEN 4 extrudierten G1-Moves nach
+    PA_ANALYZER_FRAME bilden einen geschlossenen Ring (End-Punkt der
+    4. Linie == Start-Punkt vor der 1. Linie), und es gibt mindestens
+    12 extrudierte Moves zwischen Frame-Marker und erster PA-Setzung
+    (3 Perimeter × 4 Seiten + Top-Bar + Anker).
+    """
+    import re
+    p = GeneratorParams(num_layers=1)
+    g = generate(p)
+    lines = g.splitlines()
+    frame_start = next(i for i, l in enumerate(lines)
+                       if "; PA_ANALYZER_FRAME" in l)
+    pa_set = next(i for i, l in enumerate(lines)
+                  if i > frame_start and l.startswith("SET_PRESSURE_ADVANCE"))
+    frame_block = lines[frame_start:pa_set]
+    m_mark = re.search(r"X0=([\d.-]+).*Y0=([\d.-]+)", frame_block[0])
+    bx0, by0 = float(m_mark.group(1)), float(m_mark.group(2))
+    # Filter: nur ECHTE Print-Moves (G1 mit X UND E) — schließt reine
+    # Retract/Unretract-Moves ("G1 E-0.5") aus.
+    print_moves = [l for l in frame_block
+                   if l.startswith("G1") and " X" in l and " E" in l]
+    # 3 Perimeter × 4 Seiten = 12. Top-Bar+Anker erhöhen das, daher >=12.
+    assert len(print_moves) >= 12, (
+        f"Frame sollte mindestens 12 Print-Moves (3 Perimeter × 4) "
+        f"haben, hat {len(print_moves)}")
+    # Erste 4 Print-Moves = innerster Perimeter (up → right → down → left).
+    # Die 4. Linie ("left") muss zurück zu (bx0, by0) führen — sonst
+    # ist der Ring nicht geschlossen (genau das Bug-Muster vom "[").
+    coords = []
+    for l in print_moves[:4]:
+        mx = re.search(r"X([\d.-]+)", l)
+        my = re.search(r"Y([\d.-]+)", l)
+        coords.append((float(mx.group(1)) if mx else None,
+                       float(my.group(1)) if my else None))
+    end_x, end_y = coords[3]
+    assert abs(end_x - bx0) < 0.01 and abs(end_y - by0) < 0.01, (
+        f"Frame-Ring nicht geschlossen — 4. Print-Move endet bei "
+        f"({end_x}, {end_y}), erwartet Start ({bx0}, {by0}). Das alte "
+        f'"["-Frame hatte genau dieses Problem (kein Rechts/Oben).')
+
+
+def test_top_bar_hat_45grad_infill():
+    """Top-Bar enthält 45°-Infill-Linien (Orca-Stil),
+    nicht Stadion-Boustrophedon."""
+    p = GeneratorParams(num_layers=1)
+    g = generate(p)
+    # 45°-Infill emittiert "Fill: Print up/left" und "Fill: Print down/right"
+    # Kommentare. Stadion-Code hatte das nicht.
+    assert "Fill: Print" in g, (
+        "Top-Bar hat keine 45°-Fill-Kommentare — vermutlich noch alter "
+        "Stadion-Boustrophedon-Code aktiv.")
+    # Zähle Fill-Linien: für 84×13.5 mm Top-Bar mit 3 Perimetern und
+    # spacing_45 ≈ 0.73 mm sind das ~80-100 Diagonalen.
+    fill_print_count = g.count("Fill: Print")
+    assert fill_print_count > 30, (
+        f"Erwartet > 30 Fill-Linien, hat {fill_print_count}")
+
+
+def test_top_bar_hat_luecke_zum_frame():
+    """Orca-Stil: zwischen Frame-Top (= top_bar_y_low) und Top-Bar-Bottom
+    liegt eine Lücke von ~line_spacing (~0.5 mm), die ein Verschmelzen der
+    beiden Wand-Reihen verhindert.
+
+    Test prüft: der "Fill: Move to fill start"-Move der Top-Bar liegt
+    mindestens line_spacing über dem höchsten Y der Frame-Perimeter-Moves.
+
+    Struktur im GCode (num_layers=1):
+    - Frame-Perimeter: vor G1 Z0.2 (vor Layer-Schleife)
+    - G1 Z0.2 (Layer 0 beginnt)
+    - Top-Bar-Perimeter: nach G1 Z0.2, vor Fill:
+    - Fill: Move to fill start (Infill der Top-Bar)
+    Der Frame endet bei top_bar_y_low. Die Top-Bar startet bei
+    top_bar_y_low + line_spacing (= tb_y0_gapped).
+    """
+    import math
+    import re
+    p = GeneratorParams(num_layers=1)
+    g = generate(p)
+    lines = g.splitlines()
+    # Frame-Block: zwischen PA_ANALYZER_FRAME-Marker und dem nächsten G1-Z-Move.
+    # Der Frame liegt NACH dem Pre-Loop-Z (erste G1 Z0.2) und VOR dem
+    # Layer-0-Z (zweite G1 Z0.2 innerhalb der Layer-Schleife).
+    frame_marker_idx = next(i for i, l in enumerate(lines)
+                            if "PA_ANALYZER_FRAME" in l)
+    # Nächste G1-Z-Linie nach dem Frame-Marker = Beginn der Layer-Schleife
+    z_layer_loop_idx = next(i for i, l in enumerate(lines)
+                            if i > frame_marker_idx
+                            and l.startswith("G1 Z") and " E" not in l)
+    frame_ys = []
+    for l in lines[frame_marker_idx:z_layer_loop_idx]:
+        m = re.match(r"^G1 X[\d.-]+ Y([\d.-]+).+E", l)
+        if m:
+            frame_ys.append(float(m.group(1)))
+    assert frame_ys, "Keine extrudierten Frame-Moves zwischen FRAME-Marker und Z-Loop"
+    frame_y_max = max(frame_ys)
+    # Top-Bar-Y-Min: niedrigstes Y-Perimeter der Top-Bar-Box.
+    # Der erste Travel-Move nach dem Z-Loop-Z hat Y=tb_y0_gapped
+    # (der äußerste Perimeter startet am Bottom der Top-Bar-Box).
+    # Format: "G1 X... Y... F7200" (Travel, kein E).
+    tb_travel_y: float | None = None
+    for l in lines[z_layer_loop_idx + 1:z_layer_loop_idx + 5]:
+        m = re.match(r"^G1 X[\d.-]+ Y([\d.-]+) F\d+$", l)
+        if m:
+            tb_travel_y = float(m.group(1))
+            break
+    assert tb_travel_y is not None, (
+        "Kein Travel-Move (G1 X Y F ohne E) in den ersten 4 Zeilen nach "
+        f"Layer-Loop-Z-Move (Zeile {z_layer_loop_idx}). "
+        "Prüfe GCode-Struktur.")
+    tb_y_bottom = tb_travel_y
+    expected_gap = (
+        _line_width(p) - p.layer_height * (1 - math.pi / 4))
+    actual_gap = tb_y_bottom - frame_y_max
+    assert abs(actual_gap - expected_gap) < 0.05, (
+        f"Lücke Frame-Top→Top-Bar-Bottom={actual_gap:.3f} mm, "
+        f"erwartet {expected_gap:.3f} mm (line_spacing). "
+        f"frame_y_max={frame_y_max:.3f}, tb_y_bottom={tb_y_bottom:.3f}")
+
+
+def test_label_x_position_ist_chevron_anker_nicht_mitte():
+    """Labels sollen über dem Chevron-Wall-Cluster-Mitte stehen
+    (= Orca's glyph_start_x), nicht über der Chevron-Tip-Mitte (= alt).
+
+    Differenz: die alte Mitte-über-Tip-Variante addierte `dx/2` zur
+    Wall-Cluster-Mitte (~13 mm bei Default-Geometrie). Neue Variante
+    nutzt nur Wall-Cluster-Mitte, ignoriert die Tip-Extension.
+
+    Test ruft _pa_labels_block direkt auf (isoliert von generate()'s
+    Header-Layout, das Task 7 separat regelt).
+    """
+    import re
+    from pa_analyzer.gcode_generator import (
+        _pa_labels_block,
+    )
+    p = GeneratorParams()
+    pa_values = [0.0, 0.01, 0.02]
+    px0 = 100.0  # beliebiger Pattern-Start
+    label_y = 165.0
+    wall_off = _wall_x_offset(p)
+    adv = _group_advance(p)
+    expected_x_j0 = (px0 + 0 * adv + (p.wall_count - 1) * wall_off / 2
+                     - p.label_glyph_height / 2)
+    lines = _pa_labels_block(p, pa_values, px0, label_y, adv)
+    # Erste extrudierte G1 = erste Glyph-Linie. Davor steht ein Travel
+    # zum Glyph-Start. Wir nehmen den ERSTEN Travel-Move (G1 X... ohne E).
+    first_travel = next(l for l in lines
+                        if l.startswith("G1 X") and " E" not in l)
+    x = float(re.search(r"X([\d.-]+)", first_travel).group(1))
+    assert abs(x - expected_x_j0) < 0.05, (
+        f"Label j=0 startet bei X={x:.3f}, erwartet {expected_x_j0:.3f} "
+        f"(Wall-Cluster-Mitte minus Glyph-Höhe/2). Aktuelle Formel "
+        f"zentriert ggf. noch über Chevron-Tip — Differenz "
+        f"{abs(x - expected_x_j0):.3f} mm")
+
+
+def test_settings_header_liegt_rechts_von_letztem_pa_label():
+    """Flow- und Accel-Labels sollen NACH dem letzten PA-Label
+    auf der Top-Bar stehen (Orca-Stil), nicht davor.
+
+    Test prüft präzise: das LETZTE Label-Travel-X muss RECHTS vom
+    rechtesten PA-Label-X liegen (= Flow/Accel als "extra slots"
+    nach dem PA-Cluster). Mit Header-Vor-PA-Layout wäre das letzte
+    Travel-X gleich dem rechtesten PA-Label-X (Header steht links).
+    """
+    import re
+    import math
+    from pa_analyzer.gcode_generator import (
+        GeneratorParams, generate, _wall_x_offset, _group_advance,
+        _pa_values,
+    )
+    p = GeneratorParams(num_layers=2)
+    g = generate(p)
+    lines = g.splitlines()
+    z04_idx = next(i for i, l in enumerate(lines) if l.startswith("G1 Z0.4"))
+    after_z04 = lines[z04_idx:]
+    set_pa_zero_idx = next(i for i, l in enumerate(after_z04)
+                           if re.search(r"ADVANCE=0(?:\.0+)?\b", l))
+    label_moves = after_z04[set_pa_zero_idx + 1:]
+    # X-Werte aller Travel-Moves (G1 X ohne E) im Label-Bereich
+    travel_xs = []
+    for l in label_moves:
+        if l.startswith("G1 X") and " E" not in l:
+            m = re.search(r"X([\d.-]+)", l)
+            if m:
+                travel_xs.append(float(m.group(1)))
+    # Rechtestes PA-Label (rechtester chevron, j=num_patterns-1):
+    # ohne Settings wäre das das letzte Travel überhaupt.
+    pa_values = _pa_values(p)
+    num_patterns = len(pa_values)
+    wall_off = _wall_x_offset(p)
+    adv = _group_advance(p)
+    # Aus dem GCode den px0 holen
+    import math as _math
+    from pa_analyzer.gcode_generator import _line_width as _lw_fn
+    frame_line = next(l for l in lines if "PA_ANALYZER_FRAME" in l)
+    bx0 = float(re.search(r"X0=([\d.-]+)", frame_line).group(1))
+    _lw = _lw_fn(p)
+    _line_spacing = _lw - p.layer_height * (1 - _math.pi / 4)
+    _pattern_shift = (p.wall_count - 1) * _line_spacing + _lw + 0.5
+    px0 = bx0 + _pattern_shift
+    rightmost_pa_x = (
+        px0 + (num_patterns - 1) * adv
+        + (p.wall_count - 1) * wall_off / 2
+        - p.label_glyph_height / 2)
+    # Es muss MINDESTENS ein Label-Travel deutlich RECHTS vom
+    # rechtesten PA-Label liegen (= Flow oder Accel).
+    rightmost_label = max(travel_xs)
+    assert rightmost_label > rightmost_pa_x + adv, (
+        f"Rechtester Label-Travel X={rightmost_label:.2f}, rechtester "
+        f"PA-Label X={rightmost_pa_x:.2f}. Differenz "
+        f"{rightmost_label - rightmost_pa_x:.2f} ≤ group_advance "
+        f"({adv:.2f}). Settings sind nicht RECHTS der PA-Labels "
+        f"(stehen wohl noch links davor).")
+
+
+def test_anker_marker_nicht_mehr_emittiert():
+    """Orca-Stil hat keinen separaten Anker-Marker. Frame-Asymmetrie
+    durch Top-Bar oben reicht für orientation.py."""
+    import inspect
+    from pa_analyzer import gcode_generator
+    src = inspect.getsource(gcode_generator.generate)
+    assert "_anchor_marker_block(" not in src, (
+        "_anchor_marker_block wird noch in generate() aufgerufen — "
+        "Anker-Marker noch da")
+
+
+def test_settings_labels_innerhalb_frame_x():
+    """Flow- und Accel-Labels müssen INNERHALB der Frame-X-Grenzen
+    auf der Top-Bar sitzen, NICHT in leeres Bett-Areal rechts.
+
+    Bug-Pattern: glyph_start_x(num_patterns + 2/4) mit wide
+    group_advance (~18mm) schiebt Settings ~70mm rechts vom Frame.
+    Fix: tight spacing für Settings, Frame auf diese Settings
+    extendieren.
+    """
+    import re
+    p = GeneratorParams(num_layers=2)
+    g = generate(p)
+    lines = g.splitlines()
+    # Frame-X-Bereich aus Marker
+    frame_line = next(l for l in lines if "PA_ANALYZER_FRAME" in l)
+    bx0 = float(re.search(r"X0=([\d.-]+)", frame_line).group(1))
+    bx1 = float(re.search(r"X1=([\d.-]+)", frame_line).group(1))
+    # Layer-1-Labels: alle Travel-Moves (G1 X ohne E) nach SET_PA=0
+    z04_idx = next(i for i, l in enumerate(lines) if l.startswith("G1 Z0.4"))
+    after_z04 = lines[z04_idx:]
+    set_pa_zero_idx = next(i for i, l in enumerate(after_z04)
+                           if re.search(r"ADVANCE=0(?:\.0+)?\b", l))
+    label_xs = []
+    for l in after_z04[set_pa_zero_idx + 1:]:
+        if l.startswith("G1 X") and " E" not in l:
+            m = re.search(r"X([\d.-]+)", l)
+            if m:
+                label_xs.append(float(m.group(1)))
+    # ALLE Label-X (inkl. Settings) müssen innerhalb [bx0, bx1] liegen
+    # (mit kleiner Toleranz für Glyph-Breite)
+    tol = p.label_glyph_height + 1.0
+    out_of_frame = [x for x in label_xs if x < bx0 - tol or x > bx1 + tol]
+    assert not out_of_frame, (
+        f"Settings-Labels außerhalb Frame [{bx0:.1f}, {bx1:.1f}]: "
+        f"{out_of_frame}. Frame zu schmal oder Settings-Position falsch.")
