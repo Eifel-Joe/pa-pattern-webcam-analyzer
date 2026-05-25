@@ -481,7 +481,18 @@ def generate(params: GeneratorParams) -> str:
     glyph_padding_horizontal = 0.5
     pattern_shift = ((p.wall_count - 1) * line_spacing
                      + lw + glyph_padding_horizontal)
-    total_w = pattern_w + pattern_shift
+    # Settings-Extent: tight spacing für Flow (+ optional Accel) rechts
+    # nach den PA-Labels. Frame muss so weit reichen, dass die Settings
+    # AUF der Top-Bar liegen, nicht in leeres Bett-Areal.
+    # Bug (Task 9 Render): glyph_start_x(num_patterns + 2/+4) mit
+    # group_advance ~18mm schiebt Settings ~70mm rechts vom Frame.
+    # Fix: settings nutzen label_glyph_height + 1.5mm tight spacing,
+    # Frame total_w wird um settings_extent erweitert.
+    settings_gap = 5.0  # mm Abstand letztes PA-Label → erstes Settings-Label
+    settings_spacing = p.label_glyph_height + 1.5
+    n_settings = 2 if p.accel > 0 else 1
+    settings_extent = settings_gap + n_settings * settings_spacing + 1.0
+    total_w = pattern_w + pattern_shift + settings_extent
     bx0 = p.bed_x / 2 - (total_w + 2 * margin) / 2
     by0 = p.bed_y / 2 - (pattern_h + 2 * margin) / 2
     bx1 = bx0 + total_w + 2 * margin
@@ -631,15 +642,17 @@ def generate(params: GeneratorParams) -> str:
                 print_speed=label_speed,
             ))
             # 2) Settings (Flow + Accel) NACH den PA-Labels —
-            #    glyph_start_x(num_patterns + 2) und (+ 4), Orca-Stil.
-            #    (Slot-Sprung von 2 lässt visuelle Lücke nach letztem PA-Label.)
+            #    tight spacing statt Orca's glyph_start_x(num_patterns + 2/+4).
+            #    Orca's Slot-Formel skaliert nicht mit unserer wide group_advance
+            #    (~18mm) → Settings landen ~70mm rechts vom Frame (Task 9 Bug).
+            #    Fix: settings_gap=5mm nach letztem PA-Label, dann tight spacing
+            #    label_glyph_height + 1.5mm. Frame total_w wurde bereits
+            #    um settings_extent erweitert (siehe pattern_shift-Block oben).
             num_patterns = len(pa_values)
-            flow_x = (px0 + (num_patterns + 2) * adv
-                      + (p.wall_count - 1) * wall_off / 2
-                      - p.label_glyph_height / 2)
-            accel_x = (px0 + (num_patterns + 4) * adv
-                       + (p.wall_count - 1) * wall_off / 2
-                       - p.label_glyph_height / 2)
+            settings_gap_local = 5.0
+            settings_spacing_local = p.label_glyph_height + 1.5
+            flow_x = px0 + num_patterns * adv + settings_gap_local
+            accel_x = flow_x + settings_spacing_local
             flow_value = p.extrusion_multiplier * 100  # als Prozent
             out.extend(render_label_gcode(
                 text=_fmt(flow_value),

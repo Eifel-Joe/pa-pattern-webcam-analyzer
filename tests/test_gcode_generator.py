@@ -1023,3 +1023,40 @@ def test_anker_marker_nicht_mehr_emittiert():
     assert "_anchor_marker_block(" not in src, (
         "_anchor_marker_block wird noch in generate() aufgerufen — "
         "Anker-Marker noch da")
+
+
+def test_settings_labels_innerhalb_frame_x():
+    """Flow- und Accel-Labels müssen INNERHALB der Frame-X-Grenzen
+    auf der Top-Bar sitzen, NICHT in leeres Bett-Areal rechts.
+
+    Bug-Pattern: glyph_start_x(num_patterns + 2/4) mit wide
+    group_advance (~18mm) schiebt Settings ~70mm rechts vom Frame.
+    Fix: tight spacing für Settings, Frame auf diese Settings
+    extendieren.
+    """
+    import re
+    p = GeneratorParams(num_layers=2)
+    g = generate(p)
+    lines = g.splitlines()
+    # Frame-X-Bereich aus Marker
+    frame_line = next(l for l in lines if "PA_ANALYZER_FRAME" in l)
+    bx0 = float(re.search(r"X0=([\d.-]+)", frame_line).group(1))
+    bx1 = float(re.search(r"X1=([\d.-]+)", frame_line).group(1))
+    # Layer-1-Labels: alle Travel-Moves (G1 X ohne E) nach SET_PA=0
+    z04_idx = next(i for i, l in enumerate(lines) if l.startswith("G1 Z0.4"))
+    after_z04 = lines[z04_idx:]
+    set_pa_zero_idx = next(i for i, l in enumerate(after_z04)
+                           if re.search(r"ADVANCE=0(?:\.0+)?\b", l))
+    label_xs = []
+    for l in after_z04[set_pa_zero_idx + 1:]:
+        if l.startswith("G1 X") and " E" not in l:
+            m = re.search(r"X([\d.-]+)", l)
+            if m:
+                label_xs.append(float(m.group(1)))
+    # ALLE Label-X (inkl. Settings) müssen innerhalb [bx0, bx1] liegen
+    # (mit kleiner Toleranz für Glyph-Breite)
+    tol = p.label_glyph_height + 1.0
+    out_of_frame = [x for x in label_xs if x < bx0 - tol or x > bx1 + tol]
+    assert not out_of_frame, (
+        f"Settings-Labels außerhalb Frame [{bx0:.1f}, {bx1:.1f}]: "
+        f"{out_of_frame}. Frame zu schmal oder Settings-Position falsch.")
